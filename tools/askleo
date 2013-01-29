@@ -1,0 +1,24 @@
+#!/bin/bash
+#
+# Wrapper script for Leo2 to take TPTP input from the console
+#
+# Nik Sultana, Sept 2012, Free University Berlin
+
+if [ -z "${LEO2}" ]; then
+  echo "Need to set \$LEO2 to Leo-II's 'trunk' path"
+  exit 1
+fi
+
+LEO2_ARGS=$1
+
+#Naive generation of tmp filename
+FILE="/tmp/askleo_$$_${RANDOM}"
+if [ -e "${FILE}" ]; then
+  echo "Randomly-generated tmp filename (${FILE}) already exists -- please rerun command"
+  exit 1
+fi
+
+trap "rm -f ${FILE}; exit" EXIT
+
+cat - > ${FILE}
+${LEO2}/bin/leo ${LEO2_ARGS} ${FILE}

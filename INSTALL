@@ -1,0 +1,82 @@
+THE LEO-II System Installation Guide
+(Christoph Benzmueller and Nik Sultana)
+
+
+NOTE: 
+  LEO-II runs under Objective Caml
+
+
+LEO-II Installation Instructions:
+
+ (1) Choose an [installation-directory], e.g. /home/chris/
+ (2) Download latest LEO-II version from 
+         http://www.leoprover.org
+     and store it in 
+                   [installation-directory]
+ (3) change to the installation directory
+                   cd [installation-directory]
+
+ (4) extract the files of the packages
+                   tar xzf leo2-v***.tgz
+ (5) change to the main source directory of the LEO-II package
+                   cd [installation-directory]/leo2/src
+
+ (6) build a LEO-II executable -- there are different alternatives and
+     each of them should work:
+             - "make" will build an OCaml-bytecode version of Leo-II
+             - "make opt" will build a native version of Leo-II
+             - "make clean" removes generated binaries
+
+     To build LEO-II you need to have the ocamlfind utility.
+     To build Minisat (which is included in the distribution of LEO-II)
+     gcc is required.
+
+   Running these commands will create an executable
+                  [installation-directory]/leo2/bin/leo
+                  or (in case you use "make opt")
+                  [installation-directory]/leo2/bin/leo.opt
+
+ 
+Enabling the cooperation of LEO-II with at least one First-Order Prover:
+  
+- LEO-II is designed to cooperate with first-order provers. Thus installation 
+  of a first order prover is crucial in order to run LEO-II. While LEO-II
+  can cooperate with different first-order provers, we recommend here to 
+  install the 'The E Equational Theorem Prover' which is available at 
+  http://www4.informatik.tu-muenchen.de/~schulz/WORK/eprover.html
+
+- In the following we assume that the binary for running prover E is available
+  in file 
+                    [eprover-directory]/eprover
+- In order to inform LEO-II where it can find this binary for E you need to 
+  provide a file 
+                    [your-homedirectory]/.leoatprc
+  containing the following entries:
+                    e = [eprover-directory]/eprover
+                    epclextract = [eprover-directory]/epclextract
+  The program epclextract (which belongs to the eprover) is not mandatory;
+  if available, however, LEO-II provides more concise proof output 
+  information.
+
+Running LEO-II in Automatic Modus:
+
+- To start LEO-II you need to type: 
+                    [installation-directory]/leo2/bin/leo.opt
+     or 
+                    [installation-directory]/leo2/bin/leo
+
+Usage:            [installation-directory]/leo2/bin/leo[.opt] [OPTIONS] [FILE]
+
+Display options:  [installation-directory]/leo2/bin/leo --help
+
+
+- Examples:
+   [installation-directory]/leo2/bin/leo [installation-directory]/leo2/distrib_examples/BrownSmolka-1.thf --proofoutput 2
+ 
+   [installation-directory]/leo2/bin/leo -d [installation-directory]/leo2/distrib_examples -f e -t 40
+  
+   (please make sure that you have write permissions for [installation-directory]/leo2/distrib_examples)
+
+
+
+Running LEO-II in Intercative Modus is not recommended due to several open issues.
