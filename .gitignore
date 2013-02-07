@@ -1,0 +1,17 @@
+# project specific
+/bin
+/src/.depend
+
+*.so
+
+# generrated parser
+src/parser-hotptp/htlexer.ml
+src/parser-hotptp/htparser.ml
+src/parser-hotptp/htparser.mli
+
+# ocaml
+*.cm[ioa]
+*.a
+*.o
+*.annot
+*.cmx[as]
