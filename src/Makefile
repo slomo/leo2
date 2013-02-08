@@ -49,7 +49,10 @@ endif
 SWITCHES += $(defs)
 
 # All Source Files, ordered with respect to their dependencies:
-SOURCES=datastructure/darray.mli \
+SOURCES=processmanager/ProcessManager.mli \
+	processmanager/ProcessManager.ml \
+\
+	datastructure/darray.mli \
 	datastructure/darray.ml \
 	datastructure/util.mli \
 	datastructure/util.ml \

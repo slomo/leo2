@@ -14,6 +14,7 @@ open State
 open Main
 open Calculus
 open Str
+open ProcessManager
 
 let rec compose (rl:(cl_clause list -> state -> cl_clause list) list) =
   match rl with
@@ -380,6 +381,10 @@ let remote_atp_call atp_name system_on_tptp_name success_string force (st : stat
     in if force then pre_args ^ " -f" else pre_args
   in oracle_atp_call "remote_sot" success_string atp_name args false st
 
+
+let process_states = ref []
+
+
 let atp_mains =
   [("dummy", fun (st:state) ->
       IFDEF DEBUG THEN
@@ -394,14 +399,15 @@ let atp_mains =
       (false,[],"")
    );
    ("e",fun (st:state) ->
+
       Util.sysout 1 ("[E:"^(string_of_int st.flags.atp_timeout)^"s");
-      let prover = try List.assoc "e" (!atp_cmds) with
+      let prover =  "eprover" (* try List.assoc "e" (!atp_cmds) with
                    Not_found -> 
 		     (
            set_current_success_status None Error;
 		       Util.sysout 0 "\n\nNO EXECUTABLE FOR PROVER E FOUND\n";
 		       raise (Termination (Some st));
-		     )
+		     ) *)
       in
       (* let epclextract = try List.assoc "epclextract" (!atp_cmds) with
           Not_found -> ""
@@ -430,42 +436,69 @@ let atp_mains =
       IFDEF DEBUG THEN
         Util.sysout 1 ("\n**Sent to E**\n" ^ fo_clauses ^ "**(End of input to E)**\n");
       END;
-      let res_string =
-        let (inchan, outchan) = Unix.open_process call_string in
-        let rev_content : string list ref = ref [] in
-        let read_all () =
-          try
+
+      let res_strings =
+
+        (* reverses concatination from above, remove this later *)
+        let write_clauses_to_process({ ProcessManager.channels = (toProcess, _inchan)}) =
+          output_string toProcess fo_clauses;
+          close_out_noerr toProcess
+        in
+        let call_list = Str.split (regexp "[ \t]+") call_string in
+        let old_states = !process_states in
+        let states = ProcessManager.start call_list write_clauses_to_process old_states in
+        
+        (* helper for collecting output of finished processes *)
+        let read_all fromProcess = 
+          let rev_content : string list ref = ref [] in
+          (try
             while true do
-              rev_content := input_line inchan :: !rev_content
+              rev_content := input_line fromProcess :: !rev_content
             done
           with
-              End_of_file -> ()
-        in
-          output_string outchan fo_clauses;
-          close_out_noerr outchan;
-          read_all ();
-          ignore(Unix.close_process (inchan, outchan));
+            End_of_file -> 
+              close_in_noerr fromProcess);
           String.concat "\n" (List.rev !rev_content) ^ "\n"
+        in
+        
+        
+        let ( outputs, new_states ) = ProcessManager.handle_finished states
+          (fun { ProcessManager.channels = ( _toProcess, fromProcess)} -> read_all(fromProcess))
+        in
+        
+        (* update states *)
+        process_states := new_states;        
+        
+        (* return outputs of finished processes *)
+        outputs
+          
       in
       IFDEF DEBUG THEN
         Util.sysout 1 ("]");
         Util.sysout 1 ("\n*** Result of calling first order ATP E on " ^ file_in ^ " for " ^
-                         string_of_int st.flags.atp_timeout ^ " sec ***\n ");
-        Util.sysout 1 res_string;
+                        string_of_int st.flags.atp_timeout ^ " sec ***\n ");
+        Util.sysout 1 (String.concat "\n" res_strings);
         Util.sysout 1 ("\n*** End of output from first-order ATP ***\n");
       END;
       Util.try_delete_file file_out_used_leoclauses;
-      let result =
-        Str.string_match (Str.regexp ".*SZS status Unsatisfiable.*") (eliminate_newlines res_string) 0 in
-      (*
-       let used_clauses =
-        split (regexp "\n")
-          (global_replace (regexp "[cnfo]*(.*\n") ""
-           (global_replace (regexp "\\(.*\\)file(.*, *\\([0-9]*\\))\\(.*\\)") "\\2"
-            res_string))
+
+      let (result, res_string) =
+        let isSucessfull string =
+          Str.string_match
+            (Str.regexp ".*SZS status Unsatisfiable.*")
+            (eliminate_newlines string) 0 
         in
-      *)
+        
+        (*  test if any instance returned unsatisfaiable *)
+        let sucessfull = List.exists isSucessfull res_strings in
+        let get_sucessful_result strings = List.find isSucessfull strings in
+        
+        ( sucessfull , if sucessfull then get_sucessful_result(res_strings) else "" )
+      in
+      
+      (* check result and output if needed *)
       if result & (st.flags.proof_output > 1) then
+        
        (
 	 Util.sysout 0 ("\n Trying to integrate the Proof Object of E into the LEO-II proof; this may take a while ...");
          let rec adjust_e_clause_identifiers num protocol_string =
