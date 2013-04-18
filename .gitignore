@@ -15,3 +15,4 @@ src/parser-hotptp/htparser.mli
 *.o
 *.annot
 *.cmx[as]
+*.cmx
