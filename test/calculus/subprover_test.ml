@@ -1,5 +1,4 @@
 open OUnit;;
-open Subprover;;
 open Str;;
 
 let rec create_dummy_prover str =

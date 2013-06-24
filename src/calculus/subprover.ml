@@ -1,9 +1,23 @@
 (**
-   Implements subprovers and thier execution
+   Implements subprovers and thier execution.
+   @author Yves Müller
+*)
+
+open Unix;;
+
+(**
+   There exists two ways in using this module. Either can each subprover
+   run be managed by hand. This is done via the "lowlevel". Or a strategy can
+   be given, which only must be sheduled at a regular base, and therefore takes
+   care of almost everything.
+*)
 
 
-   for the lowlevel functions the following workflow is expected:
+  (** {3 Low-Level API }
 
+   For the lowlevel functions the following workflow is expected:
+
+   {v
    start
      |
      v
@@ -17,23 +31,24 @@
      |
      v
    fetch_result
+   v}
 
-   @author Yves Müller
+
+
 *)
 
-open Unix;;
 
-module Subprover = struct
-
-  (* Modles the various types of subprover:
-      * Modelfinder
-      * Folprover (E, Vampire ... )
-      * Incremental ( Z3 )
+  (** Modles the various types of subprover:
+      {ul
+        {- Modelfinder }
+        {- First Order Prover (E, Vampire ... ) }
+        {- Incremental ( Z3 ) }
+       ul}
 
   *)
   type subprover_type = Modelfinder | Folprover | Incremental
 
-  (* Instances of that type a concrete subprovers. *)
+  (** Instances of that type a concrete subprovers. *)
   type subprover = {
     sp_type: subprover_type;
     path: string;
@@ -42,7 +57,7 @@ module Subprover = struct
   }
 
 
- (* Every call to a subprover results in a subprover run. *)
+ (** Every call to a subprover results in a subprover run. *)
   type subprover_run = {
     subprover: subprover;
     pid: int;
@@ -52,12 +67,22 @@ module Subprover = struct
     value: int;
   }
 
+
+(*type subrprover_strategy = {
+
+    parrallel:  int;
+    provers:  suprover list;
+
+
+  }*)
+
+
   exception Subprover_failed
 
   (**
      Lowlevel function to start a subprover on a given input string.
   *)
-  let start prover input =
+  let start (prover : subprover) (input : string) =
 
     (* This implements the behaviour of Unix.open_process, but returns
        pid in additon to in and out channels. *)
@@ -148,7 +173,7 @@ module Subprover = struct
       raise Subprover_failed
   ;;
 
-  (** Waits blocking until thesuprover is done and returns its result (see fetch_result) *)
+  (** Waits blocking until thesuprover is done and returns its result(see {! fetch_result }) *)
   let wait pr =
     let finished_pr = check_for_termination true pr in
     fetch_result finished_pr
@@ -166,8 +191,8 @@ module Subprover = struct
 
 
 
+  (** {3 High-Level API } *)
 
 
 
 
-end
