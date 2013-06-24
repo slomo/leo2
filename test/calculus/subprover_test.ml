@@ -18,29 +18,29 @@ let rec create_dummy_prover str =
 
 let test_prover_simple () =
   assert_equal "test"
-    ( Subprover.subprover_wait_result
-        ( Subprover.subprover_call
+    ( Subprover.wait
+        ( Subprover.start
             ( create_dummy_prover "echo test" ) "input" ))
 ;;
 
 
 let test_prover_long () =
   assert_equal "test"
-    ( Subprover.subprover_wait_result
-        ( Subprover.subprover_call
+    ( Subprover.wait
+        ( Subprover.start
             ( create_dummy_prover "./helpers/test.sh 0.1 test" ) "input" ))
 ;;
 
 
 let test_prover_checking () =
-  let sp = Subprover.subprover_call ( create_dummy_prover "./helpers/test.sh 0.1 test" ) "input" in
+  let sp = Subprover.start ( create_dummy_prover "./helpers/test.sh 0.1 test" ) "input" in
   let rec wait_for_done called sp =
     if sp.Subprover.finished == true then (
         assert called;
-        assert_equal (Subprover.subprover_fetch_result sp) "test"
+        assert_equal (Subprover.fetch_result sp) "test"
       )
     else
-      wait_for_done true (Subprover.subprover_update sp)
+      wait_for_done true (Subprover.update sp)
   in
   wait_for_done false sp
 

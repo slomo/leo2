@@ -16,10 +16,11 @@ module Subprover :
       value : int;
     }
     exception Subprover_failed
-    val subprover_call : subprover -> 'a -> subprover_run
-    val subprover_update_status : bool -> subprover_run -> subprover_run
-    val subprover_fetch_result : subprover_run -> string
-    val subprover_wait_result : subprover_run -> string
-    val subprover_update : subprover_run -> subprover_run
+    val start : subprover -> 'a -> subprover_run
+    val check_for_termination : bool -> subprover_run -> subprover_run
+    val fetch_result : subprover_run -> string
+    val wait : subprover_run -> string
+    val update : subprover_run -> subprover_run
+    val is_finished : subprover_run -> bool
     val default_subprover : subprover
   end
