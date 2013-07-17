@@ -139,32 +139,30 @@ let relation =
 
 ];;
 
-let read_status string =
-  let szs_regexp = Str.regexp "% SZS status \\([A-Za-z]+\\) for" in
+(* FIXME: use maybe here *)
+let read_status (string:string) : status option =
+  try
+    let szs_regexp = Str.regexp "% SZS status \\([A-Za-z]+\\) for" in
 
-  let szs_status_string =
-    try
+    let szs_status_string =
       let _matches  = Str.search_forward szs_regexp string 0 in
       Str.matched_group 1 string
-    with
-    | Not_found ->
-      raise (InvalidSzsStatus ( "No szs status line found" ))
-  in
+    in
 
-  let filter item = match item with
-    |  ( _ , ( _ , my_szs_string ))
-        when my_szs_string = szs_status_string -> true
-    | _ -> false
-  in
+    let filter item = match item with
+      |  ( _ , ( _ , my_szs_string ))
+          when my_szs_string = szs_status_string -> true
+      | _ -> false
+    in
 
-  try
-    fst (List.find filter status_strings)
+    Some (fst (List.find filter status_strings))
   with
+
   | Not_found ->
-    raise (InvalidSzsStatus ("No valid szs status"))
+    None
 ;;
 
-let rec is_a (a : status) (b : status) =
+let rec is_a (a : status) (b : status) : bool =
   if a = b then true
   else
     let subvalues = List.assoc b relation in

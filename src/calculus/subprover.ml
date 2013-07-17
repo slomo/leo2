@@ -167,14 +167,10 @@ let to_result (pr:subprover_run) : subprover_result =
   let rec get_szs(channel: in_channel) =
     try
       let line = input_line channel in
-      try
-        let szs_status = Szs.read_status line in
-        ([line], szs_status)
-      with
-      | Szs.InvalidSzsStatus _ ->
-        let (fragments, status) = get_szs(channel) in
-        (line::fragments, status)
-
+      match Szs.read_status line with
+      | Some szs_status -> ([line], szs_status)
+      | None -> let (fragments, status) = get_szs(channel) in
+                (line::fragments, status)
     with
     | End_of_file -> ([],Szs.ERR)
   in
