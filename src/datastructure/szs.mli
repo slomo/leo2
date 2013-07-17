@@ -1,4 +1,4 @@
-type szs_status =
+type status =
     SUC
   | UNP
   | SAP
@@ -56,7 +56,7 @@ type szs_status =
   | NTT
   | NTY
 exception InvalidSzsStatus of string
-val szs_status_strings : (szs_status * (string * string)) list
-val szs_relation : (szs_status * szs_status list) list
-val szs_read_status : string -> szs_status
-val szs_is_a : szs_status -> szs_status -> bool
+val status_strings : (status * (string * string)) list
+val relation : (status * status list) list
+val read_status : string -> status
+val is_a : status -> status -> bool

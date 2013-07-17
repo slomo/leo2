@@ -1,6 +1,6 @@
 open Str
 
-type szs_status =
+type status =
 
      SUC | UNP | SAP | ESA | SAT | FSA | THM |
      EQV | TAC | WEC | ETH | TAU | WTC | WTH |
@@ -16,7 +16,7 @@ type szs_status =
 
 exception InvalidSzsStatus of string
 
-let szs_status_strings =  [
+let status_strings =  [
 
 (SUC, ( "SUC", "Success" ));
 (UNP, ( "UNP", "UnsatisfiabilityPreserving" ));
@@ -77,7 +77,7 @@ let szs_status_strings =  [
 (NTY, ( "NTY", "NotTriedYet" ));
 ];;
 
-let szs_relation =
+let relation =
 [
 ( SUC, [ UNP; SAP; CSP; CUP ] );
 ( UNP, [ ESA ] );
@@ -139,8 +139,7 @@ let szs_relation =
 
 ];;
 
-let szs_read_status string =
-  
+let read_status string =
   let szs_regexp = Str.regexp "% SZS status \\([A-Za-z]+\\) for" in
 
   let szs_status_string =
@@ -155,25 +154,21 @@ let szs_read_status string =
   let filter item = match item with
     |  ( _ , ( _ , my_szs_string ))
         when my_szs_string = szs_status_string -> true
-    | _ -> false 
+    | _ -> false
   in
-  
+
   try
-    fst (List.find filter szs_status_strings)
+    fst (List.find filter status_strings)
   with
   | Not_found ->
     raise (InvalidSzsStatus ("No valid szs status"))
 ;;
 
-let rec szs_is_a (a : szs_status) (b : szs_status) = 
+let rec is_a (a : status) (b : status) =
   if a = b then true
   else
-    let subvalues = List.assoc b szs_relation in
-    List.exists (szs_is_a a) subvalues
+    let subvalues = List.assoc b relation in
+    List.exists (is_a a) subvalues
 ;;
 
-
-    
- 
-  
 
