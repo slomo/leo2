@@ -70,6 +70,8 @@ SOURCES=datastructure/darray.mli \
 	datastructure/orderings.ml \
 	datastructure/termsystem.mli \
 	datastructure/termsystem.ml \
+	datastructure/szs.mli \
+	datastructure/szs.ml \
 \
 	datastructure/literal.mli \
 	datastructure/literal.ml \
@@ -91,6 +93,8 @@ SOURCES=datastructure/darray.mli \
 \
 	calculus/calculus.mli \
 	calculus/calculus.ml \
+	calculus/subprover.mli \
+	calculus/subprover.ml \
 	calculus/automation.mli \
 	calculus/automation.ml \
 \
