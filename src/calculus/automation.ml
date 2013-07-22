@@ -755,6 +755,9 @@ let atp_mains =
 
              Subprover.submit_problem st;
              Subprover.tick st;
+             print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>\n";
+             Subprover.debug ();
+             print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>\n";
 
 
              let results = Subprover.collect_solutions st in
@@ -1058,7 +1061,7 @@ let loop (st:state) =
             ENDIF;
             rename_free_variables lightest st
         in
-          if not (is_subsumed_by lightest' (Set_of_clauses.elements st.passive) st FO_match) 
+          if not (is_subsumed_by lightest' (Set_of_clauses.elements st.passive) st FO_match)
             & (if st.flags.use_choice then (match detect_choice lightest' st with [] -> false | _ -> true) else true)
           then
             begin

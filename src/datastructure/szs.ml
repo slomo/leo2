@@ -142,8 +142,7 @@ let relation =
 (* FIXME: use maybe here *)
 let read_status (string:string) : status option =
   try
-    let szs_regexp = Str.regexp "% SZS status \\([A-Za-z]+\\) for" in
-
+    let szs_regexp = Str.regexp "^[%#] SZS status \\([A-Za-z]+\\)" in
     let szs_status_string =
       let _matches  = Str.search_forward szs_regexp string 0 in
       Str.matched_group 1 string

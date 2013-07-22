@@ -1,21 +1,14 @@
-INCLUDES= -I ../src/datastructure -I ../src/calculus
+INCLUDES= -I ../datastructure -I ../calculus
 DEPENDENCY= oUnit str unix
 OCAMLFIND=ocamlfind
-OCAMLFIND_FLAGS= -package "$(DEPENDENCY)" -linkpkg $(INCLUDES)
-
-test-szs.o:
-	$(OCAMLFIND) ocamlopt  $(OCAMLFIND_FLAGS) -o $@ ../src/datastructure/szs.ml \
-		datastructure/szs_test.ml
-
-test-subprover.o:
-	$(OCAMLFIND) ocamlopt  $(OCAMLFIND_FLAGS) -o $@ ../src/calculus/subprover.mli \
-		../src/calculus/subprover.ml calculus/subprover_test.ml
+FLAGS= -package "$(DEPENDENCY)" -linkpkg $(INCLUDES)
 
 
-all: test-szs.o test-subprover.o
-
-depend:
-	$(OCAMLFIND) ocamldep
+build-test:
+	$(OCAMLFIND) ocamlopt $(FLAGS) -o test-subprover \
+	../datastructure/szs.mli  ../datastructure/szs.ml \
+	../calculus/subprover.mli ../calculus/subprover.ml \
+	calculus/subprover_test.ml
 
 clean:
 	rm test-szs.o

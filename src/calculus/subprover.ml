@@ -206,7 +206,9 @@ let is_active (pr : subprover_run) = not pr.finished ;;
 let is_success (pr: subprover_run) (ret:Szs.status) =  Szs.is_a ret Szs.SUC ;;
 
 let default_subprovers = [
-   { sp_type = Folprover; path = "eprover"; name = "E"; options = [] }
+   {
+     sp_type = Folprover; path = "eprover";
+     name = "E"; options = ["--auto"; "--tptp3-format"] }
 ];;
 
 
@@ -244,47 +246,19 @@ let init ?(parrallel = 0) (provers: subprover list) =
 
 ;;
 
-
-
-
 (** helpers *)
+let with_ref_do (refa :  'a ref) (f : 'a -> 'a) : unit =
+  refa :=  f !refa ;;
 
+let add_problem (fo_clauses:string) : controller -> controller =
+  fun (sp_con) ->
+    let waiting = List.map
+      (fun (prover:subprover) -> fo_clauses, prover)
+      sp_con.provers in
+    { sp_con with waiting = waiting } ;;
 
-
-
-(** api functions *)
-
-(* FIXME: move to state *)
-let sp_controller = ref (init default_subprovers);;
-
-(** Intended usage:
-
-    start
-
-    submit_problem
-
-    collect_solutions
-
-    tick
-
-    tick_final
-*)
-
-let submit_problem (st:State.state) =
-
-  let sp_con = !sp_controller in
-  let fo_clauses:string = Main.get_fo_clauses st in
-
-  let waiting = List.map
-    (fun (prover:subprover) -> fo_clauses, prover)
-    sp_con.provers in
-
-  sp_controller := { sp_con with waiting = waiting }
-;;
-
-let collect_solutions (st:State.state) : (bool * string list * string) list =
-
-  let sc = !sp_controller in
+(* fixme: update status, ugly side effects *)
+let get_solutions (sc:controller) : (bool * string list * string) list =
 
   (* get szs_codes  *)
   let prover_results = List.map
@@ -312,14 +286,12 @@ let tick (st:State.state) =
     | rem -> ([],rem)
   in
 
-  let sc = !sp_controller in
-
   (* update status *)
   let updated_runs = List.map update sc.running in
 
   (* remove finished *)
-  let now_finished =  List.filter is_finished sc.running in
-  let still_running = List.filter is_active sc.running in
+  let now_finished =  List.filter is_finished updated_runs in
+  let still_running = List.filter is_active updated_runs in
 
   (* start as many new as possible *)
   let capacity = sc.max_parrallel -  (List.length still_running) in
@@ -328,25 +300,57 @@ let tick (st:State.state) =
     (fun(problem, prover) -> start prover problem)
     run_cand in
 
-  sp_controller := { sc with
+  { sc with
     running = List.append still_running now_running;
     waiting = still_waiting;
     finished = List.append now_finished sc.finished }
 ;;
 
+(** Kill all subprovers that haven't terminating by them self *)
+let kill_all_provers (sc:controller) : controller  =
+  let now_finished = List.map (fun prover_run ->
+    if is_active(prover_run)
+    then prover_run
+    else begin kill(prover_run); prover_run end ) sc.running in
+
+  let all_finished = List.append sc.finished now_finished in
+  { sc with finished = all_finished } ;;
+
+
+(** api functions *)
+
+(* FIXME: move to state *)
+let sp_controller = ref (init ~parrallel:2 default_subprovers);;
+
+(** Intended usage:
+
+    start
+
+    submit_problem
+
+    collect_solutions
+
+    tick
+
+    tick_final
+*)
+
+let submit_problem (st:State.state) =
+  let fo_clauses:string = Main.get_fo_clauses st in
+  with_ref_do sp_controller (add_problem fo_clauses)
+;;
+
+let collect_solutions (st:State.state) : (bool * string list * string) list =
+  get_solutions !sp_controller
+;;
+
+let tick (st:State.state) =
+  with_ref_do sp_controller perform_update
+;;
+
 let tick_final (st:State.state) =
-
-  (** Kill all subprovers that haven't terminating by them self *)
-  let kill_all_provers (sc:controller) : controller  =
-    let now_finished = List.map (fun prover_run ->
-      if is_active(prover_run)
-      then prover_run
-      else begin kill(prover_run); prover_run end ) sc.running in
-
-    let all_finished = List.append sc.finished now_finished in
-    { sc with finished = all_finished }
-
-  in
+   with_ref_do sp_controller kill_all_provers
+;;
 
   let sc = !sp_controller in
   sp_controller := kill_all_provers !sp_controller

@@ -1,10 +1,13 @@
+val ( |- ) : ('a -> 'b) -> ('c -> 'a) -> 'c -> 'b
 type subprover_type = Modelfinder | Folprover | Incremental
+val string_of_kind : subprover_type -> string
 type subprover = {
   sp_type : subprover_type;
   path : string;
   name : string;
   options : string list;
 }
+val string_of_prover : subprover -> string
 type subprover_run = {
   subprover : subprover;
   pid : int;
@@ -13,6 +16,7 @@ type subprover_run = {
   killed : bool;
   value : int;
 }
+val string_of_run : subprover_run -> string
 type subprover_result = {
   channel : in_channel;
   fragments : string list;
@@ -37,9 +41,16 @@ type controller = {
   waiting : (string * subprover) list;
   finished : subprover_run list;
 }
+val string_of_controller : controller -> string
 val init : ?parrallel:int -> subprover list -> controller
+val with_ref_do : 'a ref -> ('a -> 'a) -> unit
+val add_problem : string -> controller -> controller
+val get_solutions : controller -> (bool * string list * string) list
+val perform_update : controller -> controller
+val kill_all_provers : controller -> controller
 val sp_controller : controller ref
 val submit_problem : State.state -> unit
 val collect_solutions : State.state -> (bool * string list * string) list
 val tick : State.state -> unit
 val tick_final : State.state -> unit
+val debug : unit -> unit
