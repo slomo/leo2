@@ -39,7 +39,7 @@ let e =
   in
 
   (* post processing for the e prover *)
-  let e_porduce_proof (szs:SZS.status, output:string) =
+  let e_porduce_proof (szs:SZS.status) (output:string) =
     Util.sysout 0 ("\n Trying to integrate the Proof Object of E into the LEO-II proof; this may take a while ...");
     let rec adjust_e_clause_identifiers num protocol_string =
       Util.sysout 3 ("\n Num :" ^ string_of_int num); Util.sysout 3 ("\n Hallo1 :" ^ protocol_string);
