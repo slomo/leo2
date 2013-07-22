@@ -14,7 +14,6 @@ open State
 open Main
 open Calculus
 open Str
-open Subprover
 
 let rec compose (rl:(cl_clause list -> state -> cl_clause list) list) =
   match rl with
@@ -755,9 +754,9 @@ let atp_mains =
 
              Subprover.submit_problem st;
              Subprover.tick st;
-             print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>\n";
+             (* print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>\n";
              Subprover.debug ();
-             print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>\n";
+             print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>\n"; *)
 
 
              let results = Subprover.collect_solutions st in

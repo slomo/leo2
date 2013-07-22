@@ -29,6 +29,7 @@
 
 *)
 
+let (|-) f g = fun (x) -> f (g x);;
 
 (** Modles the various types of subprover:
     {ul
@@ -38,7 +39,14 @@
     ul}
 
 *)
-type subprover_type = Modelfinder | Folprover | Incremental
+type subprover_type = Modelfinder | Folprover | Incremental ;;
+
+let string_of_kind (kind:subprover_type) = match kind with
+  | Folprover -> "first order prover"
+  | Modelfinder -> "modelfinder"
+  | Incremental -> "incremental prover"
+;;
+
 
 (** Instances of that type a concrete subprovers. *)
 type subprover = {
@@ -46,8 +54,12 @@ type subprover = {
   path: string; (* abs or rel path to executable *)
   name: string; (* humanreadale name of the prover *)
   options : string list; (* list of standard options *)
-}
+};;
 
+let string_of_prover (prover:subprover) : string =
+  match prover with
+  | { sp_type = kind; name = name } -> name ^ ":" ^ string_of_kind kind
+;;
 
 (** Every call to a subprover results in a subprover run. *)
 type subprover_run = {
@@ -57,7 +69,12 @@ type subprover_run = {
   finished: bool;
   killed: bool;
   value: int;
-}
+};;
+
+let string_of_run (run:subprover_run) = match run with
+  | { subprover =  prover; pid = pid } ->
+   string_of_prover(prover) ^ "[" ^ string_of_int pid ^ "]"
+;;
 
 type subprover_result = {
   channel: in_channel;
@@ -107,6 +124,9 @@ let start (prover : subprover) (input : string) : subprover_run =
   | {  path = path; options = options } ->
 
     let (pid, in_chan, out_chan) = my_fork path options in
+    output_string out_chan input;
+    flush out_chan;
+    close_out out_chan;
     {
       subprover =  prover;
       pid = pid;
@@ -224,6 +244,15 @@ type controller = {
   finished: subprover_run list;
 };;
 
+let string_of_controller (controller:controller) = match controller with
+  | { max_parrallel = mp; provers = provers;
+      running = running; waiting =  waiting;
+      finished = finished } ->
+    "{ running: " ^ String.concat "\n           " (List.map string_of_run running) ^ "\n" ^
+    "  waiting: " ^ String.concat "\n           " (List.map (string_of_prover |- snd) waiting) ^ "\n" ^
+    "  finishd: " ^ String.concat "\n           " (List.map string_of_run finished)  ^ "}"
+;;
+
 let init ?(parrallel = 0) (provers: subprover list) =
 
   let detect_cpu_count () =
@@ -274,11 +303,10 @@ let get_solutions (sc:controller) : (bool * string list * string) list =
 
   (* fixme: check if prove is needed *)
   (* fixme: rething leagcy format *)
-  List.map (fun(pr) -> (true,[],""))  successfull
+  List.map (fun(pr) -> (true,pr.fragments,""))  successfull
 ;;
 
-let tick (st:State.state) =
-
+let perform_update sc =
   (* may be replaced with batterie version of split_at *)
   let rec split (n:int) list =
     match list with
@@ -352,6 +380,6 @@ let tick_final (st:State.state) =
    with_ref_do sp_controller kill_all_provers
 ;;
 
-  let sc = !sp_controller in
-  sp_controller := kill_all_provers !sp_controller
+let debug () =
+  print_string (string_of_controller !sp_controller);
 ;;
