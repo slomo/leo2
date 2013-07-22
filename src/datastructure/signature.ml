@@ -22,10 +22,12 @@ let bt_i = basetype "$i"
 let bt_o = basetype "$o"
 let bt_type = basetype "$tType"
 
-let interpreted_constants = ["$true";"$false";"~";"|";"~|";"&";"~&";"=>";"<=";"<=>";"<~>";"=";"!=";"?";"!";"!!";"??"]
+let interpreted_constants = ["$true";"$false";"~";"|";"~|";"&";"~&";"=>";"<=";"<=>";"<~>";"=";"!=";"?";"!";"!!";"??";"#box";"#dia"]
 let ctrue = "$true"
 let cfalse = "$false"
 let neg = "~"
+let box = "#box"
+let diamond = "#dia"
 let forall = "!"
 let disjunction = "|"
 let equality = "="
@@ -170,6 +172,8 @@ let new_signature () = {
     (ctrue,       bt_o);
     (cfalse,      bt_o);
     (neg,         abstr_type bt_o bt_o);
+    (box,         abstr_type bt_o bt_o);
+    (diamond,     abstr_type bt_o bt_o);
     (forall,      abstr_type (abstr_type poly0 bt_o) bt_o);
     (disjunction, abstr_type bt_o (abstr_type bt_o bt_o));
     (equality,    abstr_type poly0 (abstr_type poly0 bt_o))];
@@ -209,7 +213,10 @@ let add_type_var sigma name =
 	then sigma.typevars <- name :: sigma.typevars
 
 let add_defined_symbol ?(ty=None) sigma name t =
-  Hashtbl.add sigma.defineds name (t,ty)
+  if Hashtbl.mem sigma.defineds name 
+  then failwith ("\nsymbol "^name^ " defined twice in THF problem")
+  else
+    Hashtbl.add sigma.defineds name (t,ty)
 
 let defined_symbol_set_type sigma name ty =
   try (
@@ -223,6 +230,10 @@ let add_uninterpreted_symbol sigma name ty =
                  " with types "^(Hol_type.to_string (Hashtbl.find sigma.uis name))^
                  " and "^(Hol_type.to_string ty))
   else Hashtbl.add sigma.uis name ty
+
+let addifnew_uninterpreted_symbol sigma name ty =
+  if not (Hashtbl.mem sigma.uis name)
+  then Hashtbl.add sigma.uis name ty
 
 let is_defined_symbol sigma name =
   Hashtbl.mem sigma.defineds name
@@ -350,14 +361,17 @@ let signature_to_string (sigma:signature) =
   "\n <defined symbols> "^defined_symbols_string^"\n"
 
 let symbol_types_to_thf (sigma:signature) =
-  let type_info_string = fold_left (fun s (t,i) ->
-                                                   if (Str.string_match (Str.regexp "[A-Z].*") t 0)
-                                                      ||
-                                                      (Str.string_match (Str.regexp "[0-9].*") t 0)
-                                                   then s 
-                                                   else (s^"\n thf(tp_"^t^",type,("^t^": "^(Hol_type.to_hotptp i)^")).")) 
-                           "" (sort Hol_type.compare_string_type_pair (all_uninterpreted_symbols sigma)) in
-   type_info_string      
+  let type_concat s (t, i) =
+    if (Str.string_match (Str.regexp "[A-Z].*") t 0) ||
+      (Str.string_match (Str.regexp "[0-9].*") t 0) then s
+    else s ^ "\n thf(tp_" ^ t ^ ",type,(" ^ t ^ ": " ^ Hol_type.to_hotptp i ^ "))." in
+  let type_info_string symbols =
+    fold_left type_concat  "" (sort Hol_type.compare_string_type_pair symbols) in
+  let basetypes =
+    map (fun ty -> (Hol_type.to_string ty, bt_type)) (problemsupplied_fixed_basetypes sigma)
+  in
+    type_info_string basetypes ^
+    type_info_string (all_uninterpreted_symbols sigma)
 
 let defs_to_thf (sigma:signature) (origfilename:string) =
   let defined_symbols_string = fold_left (fun s (t,(d,i)) -> (s^"\n thf("^t^",definition,("^t^" = ("^(Term.to_hotptp d)^")),file(\'"^origfilename^"\',"^t^")).")) "" (sort compare_defns (all_defined_symbols_without_logical_symbols sigma)) in

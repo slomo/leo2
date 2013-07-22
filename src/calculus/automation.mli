@@ -34,6 +34,8 @@ val unify_pre_ext_old : cl_clause -> state -> cl_clause list
 
 val supported_atps : string list
 
+val atp_versions : unit -> unit
+
 val get_atp_times : unit -> (float * string) list
 
 val call_fo_atp : state -> string -> unit

@@ -12,13 +12,13 @@ fi
 LEO2_ARGS=$1
 
 #Naive generation of tmp filename
-FILE="/tmp/askleo_$$_${RANDOM}"
-if [ -e "${FILE}" ]; then
-  echo "Randomly-generated tmp filename (${FILE}) already exists -- please rerun command"
+TMPFILE="/tmp/askleo_$$_${RANDOM}"
+if [ -e "${TMPFILE}" ]; then
+  echo "Randomly-generated tmp filename (${TMPFILE}) already exists -- please rerun command"
   exit 1
 fi
 
-trap "rm -f ${FILE}; exit" EXIT
+trap "rm -f ${TMPFILE}; exit" EXIT
 
-cat - > ${FILE}
-${LEO2}/bin/leo ${LEO2_ARGS} ${FILE}
+cat - > ${TMPFILE}
+${LEO2}/bin/leo ${LEO2_ARGS} ${TMPFILE}

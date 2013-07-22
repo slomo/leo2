@@ -19,6 +19,7 @@ open Clause
 open Clauseset
 open State
 open Main
+open General
 
 exception Calculus_failure of string
 exception Literal_not_found
@@ -184,8 +185,8 @@ let fold_node_exhaustively st id =
                  pure_roles := (num,pos,maxflag,pol)::!pure_roles;
 		 litarray.(pos) <-  
 		   match pol with
-		     "pos" -> lit_mk_pos_literal xterm2 
-		   | "neg" -> lit_mk_neg_literal xterm2 
+		     "pos" -> lit_mk_pos_literal st.signature xterm2
+		   | "neg" -> lit_mk_neg_literal st.signature xterm2
 		   | _ -> raise (Failure "fold_node"))
 	       role_list in
 	   (!pure_roles,(Array.to_list litarray)) 
@@ -262,8 +263,8 @@ let unfold_defs_exhaustively st =
 		 pure_roles := (num,pos,maxflag,pol)::!pure_roles;
 		 litarray.(pos) <-  
 		   match pol with
-		     "pos" -> lit_mk_pos_literal (term2xterm (ground_poly_syms (xterm2term xterm2) st)) 
-		   | "neg" -> lit_mk_neg_literal (term2xterm (ground_poly_syms (xterm2term xterm2) st)) 
+		     "pos" -> lit_mk_pos_literal st.signature (term2xterm (ground_poly_syms (xterm2term xterm2) st))
+		   | "neg" -> lit_mk_neg_literal st.signature (term2xterm (ground_poly_syms (xterm2term xterm2) st))
 		   | _ -> raise (Failure "unfold_def"))
 	       role_list in
 	   (!pure_roles,(Array.to_list litarray)) 
@@ -485,26 +486,29 @@ let normalize_lit (l:role lit_literal) (st:state)  (free_vars:term list) =
   if l.lit_polarity (* positive literal *) 
   then
     match (xterm2im l.lit_term 3) with
-      Xappl(Xsymbol ("~",_),t1,_) -> ([lit_mk_neg_literal (im2xterm t1)],[],[],"extcnf_not_pos",[])
-    | Xappl(Xappl(Xsymbol ("|",_),t1,_),t2,_) -> ([lit_mk_pos_literal (im2xterm t1);lit_mk_pos_literal (im2xterm t2)],[],[],"extcnf_or_pos",[])
+      Xappl(Xsymbol ("~",_),t1,_) ->
+        ([lit_mk_neg_literal st.signature (im2xterm t1)],[],[],"extcnf_not_pos",[])
+    | Xappl(Xappl(Xsymbol ("|",_),t1,_),t2,_) ->
+        ([lit_mk_pos_literal st.signature (im2xterm t1);
+          lit_mk_pos_literal st.signature (im2xterm t2)],[],[],"extcnf_or_pos",[])
     | Xappl(Xsymbol ("!",_),t1,_) -> 
 	let (term,nvar) =  (free_var_term (im2term t1) st) in 
 	let (xterm,xnvar) = ((term2xterm term),(term2xterm nvar)) in 
    let ty = type_of xnvar in
     if ty = Signature.bt_o  then
       ([], [], [], "extcnf_forall_special_pos",
-       [lit_mk_pos_literal (term2xterm term)]
-         ::(List.map (fun l -> [lit_mk_pos_literal l])
-              (special_instantiation_o xnvar xterm st true)))
+       [lit_mk_pos_literal st.signature (term2xterm term)] ::
+         (List.map (fun l -> [lit_mk_pos_literal st.signature l])
+            (special_instantiation_o xnvar xterm st true)))
     else if ty = Funtype (Signature.bt_o, Signature.bt_o)   then
       ([], [], [], "extcnf_forall_special_pos",
-       [lit_mk_pos_literal (term2xterm term)]
-         ::(List.map (fun l -> [lit_mk_pos_literal l])
+       [lit_mk_pos_literal st.signature (term2xterm term)]
+         ::(List.map (fun l -> [lit_mk_pos_literal st.signature l])
               (special_instantiation_o_o xnvar xterm st true)))
     else if ty = Funtype (Signature.bt_o, Funtype (Signature.bt_o, Signature.bt_o))  then
       ([], [], [], "extcnf_forall_special_pos",
-        [lit_mk_pos_literal (term2xterm term)]
-         ::(List.map (fun l -> [lit_mk_pos_literal l])
+        [lit_mk_pos_literal st.signature (term2xterm term)]
+         ::(List.map (fun l -> [lit_mk_pos_literal st.signature l])
              (special_instantiation_o_o_o xnvar xterm st true)))
 (*  this seems too exhaustive
     else if ty = Funtype (Funtype (Signature.bt_o, Signature.bt_o), Signature.bt_o)  then
@@ -513,16 +517,21 @@ let normalize_lit (l:role lit_literal) (st:state)  (free_vars:term list) =
          ::(List.map (fun l -> [lit_mk_pos_literal l])
              (special_instantiation_oo_o xnvar xterm st true)))
 *)
-    else ([lit_mk_pos_literal (term2xterm term)], [], [nvar],
+    else ([lit_mk_pos_literal st.signature (term2xterm term)], [], [nvar],
           "extcnf_forall_pos", [])
     | Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) ->
-	([lit_mk_pos_literal (ext_rewrite_equation l1 l2 st)],[lit_mk_eq_literal (im2xterm l1) (im2xterm l2) "cnf-touched"],[],"extcnf_equal_pos",[])
+	      ([lit_mk_pos_literal st.signature (ext_rewrite_equation l1 l2 st)],
+         [lit_mk_eq_literal st.signature (im2xterm l1) (im2xterm l2) "cnf-touched"],
+         [],"extcnf_equal_pos",[])
     | _ -> ([l],[],[],"extcnf_equal_pos",[])
   else (*negative literal*)
     match (xterm2im l.lit_term 3) with
-      Xappl(Xsymbol ("~",_),t1,_) -> ([lit_mk_pos_literal (im2xterm t1)],[],[],"extcnf_not_neg",[])
-    | Xappl(Xappl(Xsymbol ("|",_),t1,_),t2,_) -> ([lit_mk_neg_literal (im2xterm t1)],[lit_mk_neg_literal (im2xterm t2)],[],"extcnf_or_neg",[])
-    | Xappl(Xsymbol ("!",_),t1,_) -> 
+        Xappl(Xsymbol ("~",_),t1,_) ->
+          ([lit_mk_pos_literal st.signature (im2xterm t1)],[],[],"extcnf_not_neg",[])
+      | Xappl(Xappl(Xsymbol ("|",_),t1,_),t2,_) ->
+          ([lit_mk_neg_literal st.signature (im2xterm t1)],
+           [lit_mk_neg_literal st.signature (im2xterm t2)],[],"extcnf_or_neg",[])
+      | Xappl(Xsymbol ("!",_),t1,_) ->
 (*
 	let (term,nvar) =  (free_var_term (im2term t1) st) in 
 	let (xterm,xnvar) = ((term2xterm term),(term2xterm nvar)) in 
@@ -544,12 +553,12 @@ let normalize_lit (l:role lit_literal) (st:state)  (free_vars:term list) =
              (special_instantiation_o_o_o xnvar xterm st true))])
     else 
 *)
-      ([lit_mk_neg_literal (term2xterm (skolem_term (im2term t1) st free_vars))], [], [],
-          "extcnf_forall_neg", [])
-    | Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) ->
-	([lit_mk_neg_literal (ext_rewrite_equation l1 l2 st)],[lit_mk_uni_literal (im2xterm l1) (im2xterm l2) "cnf-touched"],[],"extcnf_equal_neg",[])
-    | _ -> ([l],[],[],"extcnf_equal_neg",[])
-
+          ([lit_mk_neg_literal st.signature (term2xterm (skolem_term (im2term t1) st free_vars))], [], [],
+           "extcnf_forall_neg", [])
+      | Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) ->
+	        ([lit_mk_neg_literal st.signature (ext_rewrite_equation l1 l2 st)],
+           [lit_mk_uni_literal st.signature (im2xterm l1) (im2xterm l2) "cnf-touched"],[],"extcnf_equal_neg",[])
+      | _ -> ([l],[],[],"extcnf_equal_neg",[])
 
 
 (*
@@ -1107,7 +1116,7 @@ let standard_extcnf (c:cl_clause) (st:state) =
 	  let term = xterm2term l.lit_term in
 	  let new_term = term2xterm (standard_extcnf_term term st) in 
 	    if new_term = l.lit_term then [c] else 
-	      let new_lit = lit_mk_pos_literal new_term 
+	      let new_lit = lit_mk_pos_literal st.signature new_term
 	      in 
 		[mk_clause [new_lit] (inc_clause_count st) 
 		   (c.cl_free_vars) ("extcnf_combined",[(c.cl_number,"")],"") c.cl_origin st]
@@ -1169,7 +1178,7 @@ let rename (c:cl_clause) (st:state) =
 	then 
 	  let term = xterm2term l.lit_term in
 	  let new_term = term2xterm (rename_pos st term) in 
-	  let new_lit = lit_mk_pos_literal new_term 
+	  let new_lit = lit_mk_pos_literal st.signature new_term
 	  in [mk_clause [new_lit] (inc_clause_count st) 
 		(c.cl_free_vars) ("rename",[(c.cl_number,"")],"") c.cl_origin st]
 	else [c]
@@ -1205,7 +1214,7 @@ let dec_lit (l:role lit_literal) (st:state)=
 	| _ -> 
 	    (true,List.map 
 	       (fun (t1,t2) -> 
-		 lit_mk_uni_literal (im2xterm t1) (im2xterm t2) "dec") 
+		        lit_mk_uni_literal st.signature (im2xterm t1) (im2xterm t2) "dec")
 	       res)
       else (false,[l])
   | _ -> (false,[l])
@@ -1284,10 +1293,11 @@ let rec subst_litlist (ll:(role lit_literal) list) (st:state) (flag,litlist,subs
 	| _ -> subst_litlist rl st (flag,l::litlist,substpairlist)
 
 
-let substitute_lit (lit:role lit_literal) (st:state) substpairlist =
-  if lit.lit_polarity 
-  then lit_mk_pos_literal (substitute st.index lit.lit_term substpairlist)
-  else lit_mk_neg_literal (substitute st.index lit.lit_term substpairlist)
+let substitute_lit ?(info:string = "") (lit:role lit_literal) (st:state) substpairlist =
+  if lit.lit_polarity then
+    lit_mk_literal st.signature (substitute st.index lit.lit_term substpairlist) true info
+  else
+    lit_mk_literal st.signature (substitute st.index lit.lit_term substpairlist) false info
 
 let subst_or_clash (cl:cl_clause) (st:state) =
   output st (fun () -> ("\n\  SUBST-OR-CLASH: "^(cl_clause_to_protocol cl))); 
@@ -1582,7 +1592,7 @@ let resolve (cl1:cl_clause) (cl2:cl_clause) (st:state) =
 		(* if cl1.cl_origin = CONJECTURE & cl2.cl_origin = CONJECTURE then CONJECTURE else DERIVED in *)
                 DERIVED
               in
-	      let newlit = lit_mk_uni_literal t1 t2 "" in
+	      let newlit = lit_mk_uni_literal st.signature t1 t2 "" in
 		[mk_clause 
 		   (newlit::(List.merge lit_compare rl1 rl2)) 
 		   (inc_clause_count st) 
@@ -1671,7 +1681,7 @@ let factorize_restricted (cl:cl_clause) (st:state) =
 	       t2 = lit_term l2 and p2 = lit_polarity l2 in
 	   if p1 = p2 
 	   then 
-	     let newlit = lit_mk_uni_literal t1 t2 "" in
+	     let newlit = lit_mk_uni_literal st.signature t1 t2 "" in
 	     let keeplit = if is_flex_lit l1 then l1 else l2 in
               [mk_clause [keeplit;newlit]
 		 (inc_clause_count st) 
@@ -1686,7 +1696,7 @@ let factorize_restricted (cl:cl_clause) (st:state) =
 		then
 		  let t2 = (xterm2term l2.lit_term) in 
 		  let negt2 = Appl(Symbol "~",t2) in
-		  let newlit = lit_mk_uni_literal t1 (term2xterm negt2)  "" in
+		  let newlit = lit_mk_uni_literal st.signature t1 (term2xterm negt2)  "" in
 		  [mk_clause [l1;newlit]
 		     (inc_clause_count st) 
 		     (cl.cl_free_vars) 
@@ -1696,7 +1706,7 @@ let factorize_restricted (cl:cl_clause) (st:state) =
 		  if is_flex_lit l2 
 		  then let t1 = (xterm2term l1.lit_term) in 
 		  let negt1 = Appl(Symbol "~",t1) in
-		  let newlit = lit_mk_uni_literal t2 (term2xterm negt1) "" in
+		  let newlit = lit_mk_uni_literal st.signature t2 (term2xterm negt1) "" in
 		  [mk_clause [l2;newlit]
 		     (inc_clause_count st) 
 		     (cl.cl_free_vars) 
@@ -1902,10 +1912,10 @@ let bool_lit (l:role lit_literal) (st:state)=
 	   (* is_basetype (type_of (im2xterm l1)) *)
        then 
 	 (true,
-	  [(lit_mk_neg_literal (im2xterm l1)); 
-	   (lit_mk_neg_literal (im2xterm l2))],
-	  [(lit_mk_pos_literal (im2xterm l1)); 
-	   (lit_mk_pos_literal (im2xterm l2))]
+	  [(lit_mk_neg_literal st.signature (im2xterm l1)); 
+	   (lit_mk_neg_literal st.signature (im2xterm l2))],
+	  [(lit_mk_pos_literal st.signature (im2xterm l1)); 
+	   (lit_mk_pos_literal st.signature (im2xterm l2))]
 	 ) 
        else (false,[l],[l])
       )
@@ -1923,10 +1933,10 @@ let bool_pos_lit (l:role lit_literal) (st:state)=
 	  if l.lit_polarity
 	  then	
 	    (true,
-	     [(lit_mk_neg_literal (im2xterm l1)); 
-	      (lit_mk_pos_literal (im2xterm l2))],
-	     [(lit_mk_pos_literal (im2xterm l1)); 
-	      (lit_mk_neg_literal (im2xterm l2))]
+	     [(lit_mk_neg_literal st.signature (im2xterm l1));
+	      (lit_mk_pos_literal st.signature (im2xterm l2))],
+	     [(lit_mk_pos_literal st.signature (im2xterm l1));
+	      (lit_mk_neg_literal st.signature (im2xterm l2))]
 	    )
 	  else
 	    (false,[l],[l])
@@ -2023,7 +2033,7 @@ let func_lit (l:role lit_literal) (cl:cl_clause) (st:state)=
 	 let arg_ty = arg_type ty and
 	     nt1 = (im2term l1) and nt2 = (im2term l2) in
 	 let (sk_1,sk_2) = func_terms nt1 nt2 arg_ty st cl.cl_free_vars in
-	 (true,[lit_mk_uni_literal (term2xterm sk_1) (term2xterm sk_2) "func"])
+	 (true,[lit_mk_uni_literal st.signature (term2xterm sk_1) (term2xterm sk_2) "func"])
        else
 	 (false,[l])
       )
@@ -2041,7 +2051,7 @@ let func_lit_pos (l:role lit_literal) (cl:cl_clause) (st:state)=
 	  let arg_ty = arg_type ty and
 	      nt1 = (im2term l1) and nt2 = (im2term l2) in
 	  let (sk_1,sk_2,newvar) = func_terms_pos nt1 nt2 arg_ty st in
-	  (true,[lit_mk_eq_literal (term2xterm sk_1) (term2xterm sk_2) "func"],[newvar])
+	  (true,[lit_mk_eq_literal st.signature (term2xterm sk_1) (term2xterm sk_2) "func"],[newvar])
 	 )
        else
 	 (
@@ -2127,7 +2137,7 @@ let func_uni_lit (l:role lit_literal) (cl:cl_clause) (st:state)=
 	 let arg_ty = arg_type ty and
 	     nt1 = (im2term l1) and nt2 = (im2term l2) in
 	 let (sk_1,sk_2) = func_uni_terms nt1 nt2 arg_ty st in
-	 (true,[lit_mk_uni_literal (term2xterm sk_1) (term2xterm sk_2) "func_uni"])
+	 (true,[lit_mk_uni_literal st.signature (term2xterm sk_1) (term2xterm sk_2) "func_uni"])
        else
 	 (false,[l])
       )
@@ -2307,7 +2317,7 @@ let flex_rigid (cl:cl_clause) (st:state) =
 	   in
 	   let new_free_vars = (litlist_free_vars newlits) in
 	   mk_clause newlits (inc_clause_count st) new_free_vars 
-	     ("flex_rigid",[(cl.cl_number,"[bind("^(to_string var)^","^(to_string gb)^")]")],"") cl.cl_origin st)
+	     ("flex_rigid",[(cl.cl_number, "[bind(" ^ to_string var ^ ", $thf(" ^ to_hotptp gb ^ "))]")], "") cl.cl_origin st)
 	 subst_pairs)
     else [] in
   output st (fun () -> ("  FLEX-RIGID-RESULT: "^(cl_clauselist_to_protocol result)^"\n")); 
@@ -2418,7 +2428,7 @@ let prim_subst (cl:cl_clause) (st:state) =
 			       let new_free_vars = (litlist_free_vars newlits) in
 			       let new_clause =
 				 mk_clause newlits (inc_clause_count st) new_free_vars 
-				   ("prim_subst",[(cl.cl_number,"[bind("^(to_string var)^","^(to_string gb)^")]")],"") cl.cl_origin st
+				   ("prim_subst",[(cl.cl_number, "[bind(" ^ to_string var ^ ", $thf(" ^ to_hotptp gb ^ "))]")], "") cl.cl_origin st
 			       in simplify new_clause st
 			    )
 			    prim_subst_pairs))
@@ -2509,7 +2519,7 @@ let replace_leibniz_lits (cl:cl_clause) (st:state) =
 		    let new_free_vars = (litlist_free_vars newlits) in
 		    let new_clause =
 		      mk_clause newlits (inc_clause_count st) new_free_vars 
-			("replace_leibnizEQ",[(cl.cl_number,"[bind("^(to_string xvar)^","^(to_string xgb)^")]")],"") cl.cl_origin st
+			("replace_leibnizEQ", [(cl.cl_number, "[bind(" ^ to_string xvar ^ ", $thf(" ^ to_hotptp xgb ^ "))]")], "") cl.cl_origin st
 		    in 
 		      if (List.length litlist <= 2) then simplify new_clause st else cl::simplify new_clause st
 		| _ -> [cl] )
@@ -2556,7 +2566,7 @@ let replace_andrews_lits (cl:cl_clause) (st:state) =
 	  let new_free_vars = (litlist_free_vars newlits) in
 	  let new_clause =
 	    mk_clause newlits (inc_clause_count st) new_free_vars 
-	      ("replace_andrewsEQ",[(cl.cl_number,"[bind("^(to_string xvar)^","^(to_string xgb)^")]")],"") cl.cl_origin st
+	      ("replace_andrewsEQ", [(cl.cl_number, "[bind(" ^ to_string xvar ^ ", $thf(" ^ to_hotptp xgb ^ "))]")], "") cl.cl_origin st
 	  in 
             Util.sysout 3 ("\n SOMETHINGDONE_REPLACE_ANDREWS_EQ");  
             cl::simplify new_clause st
@@ -2575,182 +2585,11 @@ let replace_defEQ_lits (cl:cl_clause) (st:state) =
     | _ -> replace_andrews_lits cl st 
 *)
 
+
 (** The (Extensional) Pre-Unification Rule *)
-
-(*
-let analyze_unilit (lit:role lit_literal) (st:state) =    
-  let is_logical_connective (t:role xterm) =
-    match (xterm2im t 1) with
-      Xsymbol(s,_) -> 
-	(
-	 match s with
-	   "~" -> true
-	 | "|"  -> true
-	 | "&" -> true
-	 | "~|" -> true
-	 | "~&" -> true
-	 | "=" -> true
-	 | "!=" -> true 
-	 | "=>" -> true
-	 | "<=" -> true
-	 | "<=>" -> true
-	 | "<~>" -> true
-	 | "!" -> true
-	 | "?" -> true
-	 | _ -> false
-	)
-    | _ -> false
-  in
-  let rec analyze l1 l2 st = 
-    if l1 = l2 then ("triv",(im2xterm l1),(im2xterm l2),[],[]) else
-    match l1 with 
-      Xsymbol(s1,_) ->
-	let ty1 = type_of (im2xterm l1) in
-	(
-	 match l2 with 
-	   Xsymbol(s2,_) -> 
-	     if Term.is_variable (Symbol s1) 
-	     then ("bind",(im2xterm l1),(im2xterm l2),[],[]) 
-	     else
-	       if Term.is_variable (Symbol s2) 
-	       then ("bind",(im2xterm l2),(im2xterm l1),[],[]) 
-               else 
-	         if ty1 = bt_o 
-		 then ("bool",(im2xterm l2),(im2xterm l1),[],[])
-		 else ("fail",(im2xterm l2),(im2xterm l1),[],[])
-	 | Xappl(_,_,_) -> 
-	     if is_funtype ty1 
-	     then ("func",(im2xterm l1),(im2xterm l2),[],[]) 
-	     else
-	       if Term.is_variable (Symbol s1) then 
-		 if 
-		   let test = occurs_in st.index (im2xterm l2) (im2xterm l1) in
-		   Util.sysout 2 ("\n   Testing wheter "^(to_string (im2xterm l1))^" occurs in "^(to_string (im2xterm l2))^" : "^(string_of_bool test));
-		   test
-		 then 
-		   if ty1 = bt_o & is_logical_connective (get_head (im2xterm l1))
-		   then ("occurs+bool",(im2xterm l1),(im2xterm l2),[],[])
-		   else ("occurs",(im2xterm l1),(im2xterm l2),[],[])
-		 else 
-		   if ty1 = bt_o & is_logical_connective (get_head (im2xterm l2))
-		   then ("bind+bool",(im2xterm l1),(im2xterm l2),[],[])
-		   else ("bind",(im2xterm l1),(im2xterm l2),[],[])
-	       else analyze l2 l1 st
-	 | Xabstr(_,_,_,_) -> ("func",(im2xterm l1),(im2xterm l2),[],[])   
-	 | _ -> raise (Failure "analyze in pre_uniy")
-	)
-    | Xappl(_,_,_) -> 
-	(
-	 match l2 with 
-	   Xsymbol(_,_) -> 
-	     let ty2 = type_of (im2xterm l2) 
-	     and xl1 = (im2xterm l1) in
-	     let head_l1 = get_head xl1
-	     and xl2 = (im2xterm l2) in 
-	     if is_variable head_l1 & is_variable xl2 
-	     then ("flexflex",xl1,xl2,[],[])
-	     else 
-	       if is_variable head_l1 & (is_logical_connective xl2)
-	       then ("flexrigid+bool",xl1,xl2,[],[])
-	       else
-		 if is_variable head_l1 & (not (is_variable xl2))
-		     & (not (is_logical_connective xl2))
-		 then ("flexrigid",xl1,xl2,[],[])
-		 else
-		   if (not (is_variable head_l1)) & (not (is_variable xl2)) & ((type_of (im2xterm l1)) = bt_o)
-(*		       & (is_logical_connective head_l1)     chris  *)
-		   then ("bool",xl1,xl2,[],[])
-		   else 
-		     if (not (is_variable head_l1)) & is_variable xl2
-		     then 
-		       if 
-			 let test = occurs_in st.index (im2xterm l1) xl2 in
-			 Util.sysout 2 ("\n   Testing wheter "^(to_string xl2)^" occurs in "^(to_string (im2xterm l1))^" : "^(string_of_bool test));
-			 test
-		       then 
-			 if ty2 = bt_o & is_logical_connective head_l1
-			 then ("occurs+bool",(im2xterm l2),(im2xterm l1),[],[])
-			 else ("occurs",(im2xterm l2),(im2xterm l1),[],[])
-		       else 
-			 if ty2 = bt_o & is_logical_connective head_l1
-			 then ("bind+bool",(im2xterm l2),(im2xterm l1),[],[])
-			 else ("bind",(im2xterm l2),(im2xterm l1),[],[])
-		     else ("fail",xl1,xl2,[],[])
-	 | Xappl(_,_,_) -> 
-	     let xl1 = (im2xterm l1)
-	     and xl2 = (im2xterm l2) in
-	     let head_l1 = get_head xl1 
-	     and args_l1 = get_args xl1
-	     and head_l2 = get_head xl2
-	     and args_l2 = get_args xl2 in 
-	     if is_variable head_l1 & is_variable head_l2 
-	     then ("flexflex",xl1,xl2,[],[])
-	     else 
-	       if is_variable head_l1 & is_logical_connective head_l2 
-	       then ("flexrigid+bool",xl1,xl2,[],[])
-	       else 
-		 if is_variable head_l1 & (not (is_variable head_l2)) 
-		     & (not (is_logical_connective head_l2))
-		 then ("flexrigid",xl1,xl2,[],[])
-		 else 
-		   if is_logical_connective head_l1 & is_variable head_l2 
-		   then ("flexrigid+bool",xl2,xl1,[],[])
-		   else
-		     if (not (is_logical_connective head_l1)) & (not (is_variable head_l1)) 
-			 & is_variable head_l2 
-		     then ("flexrigid",xl2,xl1,[],[])
-		     else 
-		       if (not (is_variable head_l1)) & (not (is_variable head_l2)) 
-			   & head_l1 = head_l2 & (List.length args_l1) = (List.length args_l2) 
-			   & (is_logical_connective head_l1 || is_logical_connective head_l2)        
-		       then ("dec+bool",xl1,xl2,args_l1,args_l2)
-		       else
-			 if (not (is_variable head_l1)) & (not (is_variable head_l2)) 
-			     & (not (head_l1 = head_l2)) 
-			     & (is_logical_connective head_l1 || is_logical_connective head_l2)    
-			 then ("bool",xl2,xl1,[],[])
-			 else 
-			   if (not (is_variable head_l1)) & (not (is_variable head_l2)) 
-			       & head_l1 = head_l2 & (List.length args_l1) = (List.length args_l2) 
-			       & (not (is_logical_connective head_l1)) & (not (is_logical_connective head_l2))
-			   then ("dec",xl1,xl2,args_l1,args_l2)
-			   else ("fail",xl2,xl1,[],[])
-	 | Xabstr(_,_,_,_) -> ("func",(im2xterm l1),(im2xterm l2),[],[])
-	 | _ -> raise (Failure "analyze in pre_unify")
-	)
-    | Xabstr(_,_,_,_) ->
-	(
-	 match l2 with 
-	   Xsymbol(_,_) -> analyze l2 l1 st 
-	 | Xappl(hdl2,bdl2,tyl2) -> analyze l2 l1 st
-	 | Xabstr(vl2,vtyl2,bdl2,bdtyl2) -> ("func",(im2xterm l1),(im2xterm l2),[],[])
-	 | _ -> raise (Failure "analyze in pre_unify")
-	)
-    | _ -> raise (Failure "analyze in pre_unify")
-  in
-  let result = 
-    if lit.lit_polarity
-    then ("otherlit",lit.lit_term,lit.lit_term,[],[])
-    else 
-      match (xterm2im lit.lit_term 6) with
-	Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) -> analyze l1 l2 st
-      | _ -> ("otherlit",lit.lit_term,lit.lit_term,[],[])
-  in    
-
-  let (s,t1,t2,lst1,lst2) = result in  
-   Util.sysout 3 ("\n  Analysis of Lit: "^(lit_literal_to_string lit)^" ---> ("^s^","^(to_string t1)^","^(to_string t2)^","^(List.fold_right (fun t s -> (to_string t)^"|"^s) lst1 "")^","^(List.fold_right (fun t s -> (to_string t)^"|"^s) lst2 "")^")"); 
-   
-  result
-*) 
-
 
 let alpha_equal xt1 xt2 st =
  ((get_id st.index xt1) = (get_id st.index xt2)) 
-
-
-
-
-
 
 let analyze_unilit (lit:role lit_literal) (st:state) =    
   let is_logical_connective (t:role xterm) =
@@ -2903,349 +2742,9 @@ let analyze_unilit (lit:role lit_literal) (st:state) =
     
     result
 
+let analyze_flexflex_unilits (lits : role lit_literal list) =
+  List.partition (fun l -> is_flexflex_unilit l) lits
 
-
-(* version with choice --- not used 
-
-let analyze_unilit (lit:role lit_literal) (depth:int) (st:state) =    
-  let is_logical_connective (t:role xterm) =
-    match (xterm2im t 1) with
-      Xsymbol(s,_) -> 
-	(
-	 match s with
-	   "~" -> true
-	 | "|"  -> true
-	 | "&" -> true
-	 | "~|" -> true
-	 | "~&" -> true
-	 | "=" -> true
-	 | "!=" -> true 
-	 | "=>" -> true
-	 | "<=" -> true
-	 | "<=>" -> true
-	 | "<~>" -> true
-	 | "!" -> true
-	 | "?" -> true
-	 | _ -> false
-	)
-    | _ -> false
-  in
-  let is_equality (t:role xterm) =
-    match (xterm2im t 1) with
-	Xsymbol(s,_) -> 
-	  (	  
-	    match s with
-	      | "=" -> true
-	      | _ -> false
-	  )
-      | _ -> false
-  in
-  let has_choice_hd (xt:role xterm) st =
-    Util.sysout 3 ( "\n\n HAS_CHOICE_HD: "^(to_string xt));
-    let t = (xterm2term xt) in
-    let result =
-       match t with
-         Appl(_,_) -> 
-            let xhd = (get_head xt) in
-            let hd = (xterm2term xhd) in
-               (match type_of xhd with
-                   Funtype(Funtype(alpha,Basetype("$o")),beta) ->
-	             alpha = beta & (List.mem hd st.choice_functions || Term.is_variable hd)
-	         | _ -> false)
-        | _ -> false in
-      Util.sysout 3 ( "\n HAS_CHOICE_HD Result: "^(string_of_bool result));
-      result
-  in
-  let analyze l1 l2 depth st = 
-      let xl1 = (im2xterm l1) 
-      and xl2 = (im2xterm l2) in
-      let xhl1 = get_head xl1 
-      and xhl2 = get_head xl2 
-      and xargsl1 = get_args xl1
-      and xargsl2 = get_args xl2 in
-	if 
-	  let res = alpha_equal xl1 xl2 st in  (* was (xl1 = xl2), use alpha equality instead *) 
-	    (Util.sysout 3 ( "\n\n TEST1 = "^(to_string xl1)
-			    ^"\n TEST2 = "^(to_string xl2)
-			    ^"\n RES = "^(string_of_bool res)
-                            ^"\n ID1 = "^(string_of_int (get_id st.index xl1))
-                            ^"\n ID2 = "^(string_of_int (get_id st.index xl2))));
-	    res
-	then ("triv",xl1,xl2,[],[]) 
-	else
-	  match (l1,l2,
-		 (is_variable xhl1),(is_variable xhl2),
-		 (type_of xl1),(type_of xl2),
-		 (is_logical_connective xhl1),(is_logical_connective xhl2),
-		 (is_equality xhl1),(is_equality xhl2),
-		 (has_choice_hd xl1 st),(has_choice_hd xl2 st))
-	  with
-              (Xabstr(_,_,_,_),Xsymbol(_,_),_,true,_,_,_,_,_,_,_,_) -> 
-	        let occurstest = occurs_in st.index xl1 xl2 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl2)^" occurs in "^(to_string xl1)^" : "^(string_of_bool occurstest)); 
-		  if occurstest then ("func",xl2,xl1,[],[]) else ("bind",xl2,xl1,[],[])
-	    | (Xabstr(_,_,_,_),_,_,_,_,_,_,_,_,_,_,_) -> ("func",xl1,xl2,[],[])
-            | (Xsymbol(_,_),Xabstr(_,_,_,_),true,_,_,_,_,_,_,_,_,_) -> 
-                let occurstest = occurs_in st.index xl2 xl1 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl1)^" occurs in "^(to_string xl2)^" : "^(string_of_bool occurstest)); 
-		  if occurstest then ("func",xl1,xl2,[],[]) else ("bind",xl1,xl2,[],[])
-	    | (_,Xabstr(_,_,_,_),_,_,_,_,_,_,_,_,_,_) -> ("func",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xsymbol(_,_),true,true,Basetype(_),Basetype(_),_,_,_,_,_,_) -> ("bind",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xsymbol(_,_),true,true,_,_,_,_,_,_,_,_) -> ("bind",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xsymbol(_,_),true,_,_,_,_,_,_,_,_,_) -> ("bind",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xsymbol(_,_),_,true,_,_,_,_,_,_,_,_) -> ("bind",xl2,xl1,[],[])
-	    | (Xsymbol(_,_),Xsymbol(_,_),false,false,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),false,true,_,_,_,_) -> ("bool",xl1,xl2,[],[]) 
-	    | (Xsymbol(_,_),Xsymbol(_,_),false,false,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),true,false,_,_,_,_) -> ("bool",xl1,xl2,[],[]) 
-	    | (Xsymbol(_,_),Xsymbol(_,_),false,false,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),false,false,_,_,_,_) -> ("bool",xl1,xl2,[],[]) 
-	    | (Xsymbol(_,_),Xsymbol(_,_),false,false,Funtype(_,_),Funtype(_,_),_,_,_,_,_,_) -> ("func",xl1,xl2,[],[]) 
-	    | (Xsymbol(_,_),Xsymbol(_,_),_,_,_,_,_,_,_,_,_,_) -> ("fail",xl1,xl2,[],[]) 
-
-            | (Xsymbol(_,_),Xappl(_,_,_),true,_,Funtype(_,_),Funtype(_,_),_,_,_,_,_,_) -> 
-	        let occurstest = occurs_in st.index xl2 xl1 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl1)^" occurs in "^(to_string xl2)^" : "^(string_of_bool occurstest)); 
-		  if occurstest then ("func",xl1,xl2,[],[]) else ("bind",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xappl(_,_,_),_,true,Funtype(_,_),Funtype(_,_),_,_,_,_,_,true) -> ("func+choiceInst",xl2,xl1,[],[]) 
-	    | (Xsymbol(_,_),Xappl(_,_,_),_,false,_,_,_,_,_,_,_,true) -> ("choice",xl2,xl1,[],[]) 
-	    | (Xsymbol(_,_),Xappl(_,_,_),_,_,Funtype(_,_),Funtype(_,_),_,_,_,_,_,_) -> ("func",xl1,xl2,[],[]) 
-	    | (Xsymbol(_,_),Xappl(_,_,_),false,false,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),_,_,_,_,_,_) -> ("bool",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xappl(_,_,_),true,_,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),true,_,_,_,_,_) -> 
-		let occurstest = occurs_in st.index xl2 xl1 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl1)^" occurs in "^(to_string xl2)^" : "^(string_of_bool occurstest)); 
-		  if occurstest 
-                  then if depth > 1 then ("occurs+bool",xl1,xl2,[],[])  else ("occurs",xl1,xl2,[],[])
-                  else if depth > 1 then ("bind+bool",xl1,xl2,[],[]) else ("bind",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xappl(_,_,_),true,_,_,_,_,_,_,_,_,_) -> 
-		let occurstest = occurs_in st.index xl2 xl1 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl1)^" occurs in "^(to_string xl2)^" : "^(string_of_bool occurstest)); 
-		  if occurstest then ("occurs",xl1,xl2,[],[]) else ("bind",xl1,xl2,[],[])
-	    | (Xsymbol(_,_),Xappl(_,_,_),false,true,_,_,_,_,_,_,_,true) -> ("flexrigid+choiceInst",xl2,xl1,[],[])
-	    | (Xsymbol(_,_),Xappl(_,_,_),false,true,_,_,_,_,_,_,_,false) -> ("flexrigid",xl2,xl1,[],[])
-	    | (Xsymbol(_,_),Xappl(_,_,_),false,false,_,_,_,_,_,_,_,false) -> ("fail",xl1,xl2,[],[])
-
-	    | (Xappl(_,_,_),Xsymbol(_,_),_,true,Funtype(_,_),Funtype(_,_),_,_,_,_,_,_) -> 
-         	let occurstest = occurs_in st.index xl1 xl2 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl2)^" occurs in "^(to_string xl1)^" : "^(string_of_bool occurstest)); 
-		  if occurstest then ("func",xl2,xl1,[],[]) else ("bind",xl2,xl1,[],[])
-	    | (Xappl(_,_,_),Xsymbol(_,_),true,_,Funtype(_,_),Funtype(_,_),_,_,_,_,true,_) -> ("func+choiceInst",xl1,xl2,[],[]) 
-	    | (Xappl(_,_,_),Xsymbol(_,_),false,_,_,_,_,_,_,_,true,_) -> ("choice",xl1,xl2,[],[]) 
-	    | (Xappl(_,_,_),Xsymbol(_,_),_,_,Funtype(_,_),Funtype(_,_),_,_,_,_,_,_) -> ("func",xl1,xl2,[],[]) 
-	    | (Xappl(_,_,_),Xsymbol(_,_),false,false,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),_,_,_,_,_,_) -> ("bool",xl1,xl2,[],[])
-	    | (Xappl(_,_,_),Xsymbol(_,_),_,true,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),true,_,_,_,_,_) ->  
-		let occurstest = occurs_in st.index xl1 xl2 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl2)^" occurs in "^(to_string xl1)^" : "^(string_of_bool occurstest)); 
-		  if occurstest 
-                  then if depth > 1 then ("occurs+bool",xl2,xl1,[],[]) else ("occurs",xl2,xl1,[],[])
-                  else if depth > 1 then ("bind+bool",xl2,xl1,[],[]) else ("bind",xl2,xl1,[],[])
-	    | (Xappl(_,_,_),Xsymbol(_,_),_,true,_,_,_,_,_,_,_,_) -> 
-		let occurstest = occurs_in st.index xl1 xl2 in
-		  Util.sysout 2 ("\n   Testing wheter "^(to_string xl2)^" occurs in "^(to_string xl1)^" : "^(string_of_bool occurstest)); 
-		  if occurstest then ("occurs",xl2,xl1,[],[]) else ("bind",xl2,xl1,[],[])
-	    | (Xappl(_,_,_),Xsymbol(_,_),true,false,_,_,_,_,_,_,true,_) -> ("flexrigid+choiceInst",xl1,xl2,[],[])
-	    | (Xappl(_,_,_),Xsymbol(_,_),true,false,_,_,_,_,_,_,false,_) -> ("flexrigid",xl1,xl2,[],[])
-	    | (Xappl(_,_,_),Xsymbol(_,_),false,false,_,_,_,_,_,_,false,_) -> ("fail",xl1,xl2,[],[])
-
-	    | (Xappl(_,_,_),Xappl(_,_,_),true,true,_,_,_,_,_,_,_,_) -> ("flexflex",xl1,xl2,[],[])
- 	    | (Xappl(_,_,_),Xappl(_,_,_),false,false,_,_,_,_,_,_,true,false) -> ("choice",xl1,xl2,xargsl1,xargsl2) 
- 	    | (Xappl(_,_,_),Xappl(_,_,_),false,false,_,_,_,_,_,_,false,true) -> ("choice",xl2,xl1,xargsl2,xargsl1) 
-	    | (Xappl(_,_,_),Xappl(_,_,_),false,false,_,_,_,_,_,_,true,true) -> 
-	        if ((List.map type_of xargsl1) = (List.map type_of xargsl2))
-		then ("dec+choiceChoice",xl1,xl2,xargsl1,xargsl2) 
-		else ("choiceChoice",xl1,xl2,[],[]) 
-	    | (Xappl(_,_,_),Xappl(_,_,_),false,false,_,_,_,_,true,true,_,_) -> 
-		if ((List.map type_of xargsl1) = (List.map type_of xargsl2))
-		then ("dec=",xl1,xl2,xargsl1,xargsl2)
-		else ("fail",xl1,xl2,[],[])
-(*
-	    | (Xappl(_,_,_),Xappl(_,_,_),false,false,Basetype("o"),Basetype("o"),true,_,_,_) -> 
-		if  xhl1 = xhl2  then ("dec+bool",xl1,xl2,xargsl1,xargsl2) else ("bool",xl1,xl2,[],[])
-	    | (Xappl(_,_,_),Xappl(_,_,_),false,false,Basetype("o"),Basetype("o"),_,true,_,_) -> 
-		if  xhl1 = xhl2  then ("dec+bool",xl1,xl2,xargsl1,xargsl2) else ("bool",xl1,xl2,[],[])
-*)
-(*
-            | (Xappl(_,_,_),Xappl(_,_,_),false,false,Basetype("o"),Basetype("o"),_,_,_,_) -> 
-		if  xhl1 = xhl2  then ("dec+bool",xl1,xl2,xargsl1,xargsl2) else ("bool",xl1,xl2,[],[])
-*)
-            | (Xappl(_,_,_),Xappl(_,_,_),false,false,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),_,_,_,_,_,_) -> 
-		if  xhl1 = xhl2 & ((List.map type_of xargsl1) = (List.map type_of xargsl2))
-                then if depth > 1 then ("dec+bool",xl1,xl2,xargsl1,xargsl2) else ("dec",xl1,xl2,xargsl1,xargsl2)
-                else if depth > 1 then ("bool",xl1,xl2,[],[]) else ("fail",xl1,xl2,[],[])
-	    | (Xappl(_,_,_),Xappl(_,_,_),false,false,_,_,_,_,_,_,_,_) -> 
-		if  xhl1 = xhl2 & ((List.map type_of xargsl1) = (List.map type_of xargsl2))
-                then ("dec",xl1,xl2,xargsl1,xargsl2) 
-                else ("fail",xl1,xl2,[],[])
-	    | (Xappl(_,_,_),Xappl(_,_,_),true,false,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),_,true,_,_,_,_) -> 
-	        if depth > 1 then ("flexrigid+bool",xl1,xl2,[],[]) else ("flexrigid",xl1,xl2,[],[])
-	    | (Xappl(_,_,_),Xappl(_,_,_),false,true,Basetype("$o")(*FIXME const*),Basetype("$o")(*FIXME const*),true,_,_,_,_,_) -> 
-                if depth > 1 then ("flexrigid+bool",xl2,xl1,[],[]) else ("flexrigid",xl2,xl1,[],[])
- 	    | (Xappl(_,_,_),Xappl(_,_,_),true,false,_,_,_,_,_,_,true,_) -> ("flexrigid+choiceInst",xl1,xl2,[],[])  
- 	    | (Xappl(_,_,_),Xappl(_,_,_),true,false,_,_,_,_,_,_,false,_) -> ("flexrigid",xl1,xl2,[],[])
- 	    | (Xappl(_,_,_),Xappl(_,_,_),false,true,_,_,_,_,_,_,_,true) -> ("flexrigid+choiceInst",xl2,xl1,[],[])
- 	    | (Xappl(_,_,_),Xappl(_,_,_),false,true,_,_,_,_,_,_,_,false) -> ("flexrigid",xl2,xl1,[],[])
-	    | (_,_,_,_,_,_,_,_,_,_,_,_) -> 
-		Util.sysout 2 ("\n  FAILURE analyze in pre_unify: left:"^(to_string xl1)^" right: "^(to_string xl2)^"\n");
-		raise (Failure "analyze in pre_unify")
-  in
-  let result = 
-    if lit.lit_polarity
-    then ("otherlit",lit.lit_term,lit.lit_term,[],[])
-    else 
-      match (xterm2im lit.lit_term 6) with
-	  Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) -> analyze l1 l2 depth st
-	| _ -> ("otherlit",lit.lit_term,lit.lit_term,[],[])
-  in    
-    
-  let (s,t1,t2,lst1,lst2) = result in  
-    Util.sysout 3 ("\n\n  Analysis of Lit: "^(lit_literal_to_string lit)^" at recursion level "^(string_of_int depth)^" ---> ("^s^","^(to_string t1)^","^(to_string t2)^","^(List.fold_right (fun t s -> (to_string t)^"|"^s) lst1 "")^","^(List.fold_right (fun t s -> (to_string t)^"|"^s) lst2 "")^")"); 
-    
-    result
-*)
-
-
-(* old-version -- replaced by chris, january 2009
-
-let analyze_unilit (lit:role lit_literal) (st:state) =    
-  let is_logical_connective (t:role xterm) =
-    match (xterm2im t 1) with
-      Xsymbol(s,_) -> 
-	(
-	 match s with
-	   "~" -> true
-	 | "|"  -> true
-	 | "&" -> true
-	 | "~|" -> true
-	 | "~&" -> true
-	 | "=" -> true
-	 | "!=" -> true 
-	 | "=>" -> true
-	 | "<=" -> true
-	 | "<=>" -> true
-	 | "<~>" -> true
-	 | "!" -> true
-	 | "?" -> true
-	 | _ -> false
-	)
-    | _ -> false
-  in
-  let rec analyze l1 l2 st = 
-    if l1 = l2 then ("triv",(im2xterm l1),(im2xterm l2),[],[]) else
-    match (l1,l2) with
-	( Xsymbol(s1,_) , Xsymbol(s2,_) ) ->
-	  let  ty1 = type_of (im2xterm l1) in 
-	    ( match ( Term.is_variable (Symbol s1) , Term.is_variable (Symbol s2) ) with
-		  (true,false) -> ("bind",(im2xterm l1),(im2xterm l2),[],[])
-		| (true,true) ->  ("bind",(im2xterm l1),(im2xterm l2),[],[])
-		| (false,true) -> ("bind",(im2xterm l2),(im2xterm l1),[],[])
-		| (false,false) -> 
-		    if ty1 = bt_o 
-		    then ("bool",(im2xterm l2),(im2xterm l1),[],[])
-		    else ("fail",(im2xterm l2),(im2xterm l1),[],[])
-	    )
-      | ( Xsymbol(s1,_) , Xappl(_,_,_) -> 
-	    if is_funtype ty1 
-	    then ("func",(im2xterm l1),(im2xterm l2),[],[]) 
-	    else
-	      if Term.is_variable (Symbol s1) then 
-		if 
-		  let test = occurs_in st.index (im2xterm l2) (im2xterm l1) in
-		    Util.sysout 2 ("\n   Testing wheter "^(to_string (im2xterm l1))^" occurs in "^(to_string (im2xterm l2))^" : "^(string_of_bool test));
-		    test
-		then 
-		  if ty1 = bt_o & is_logical_connective (get_head (im2xterm l1))
-		  then ("occurs+bool",(im2xterm l1),(im2xterm l2),[],[])
-		  else ("occurs",(im2xterm l1),(im2xterm l2),[],[])
-		else 
-		  if ty1 = bt_o & is_logical_connective (get_head (im2xterm l2))
-		  then ("bind+bool",(im2xterm l1),(im2xterm l2),[],[])
-		  else ("bind",(im2xterm l1),(im2xterm l2),[],[])
-	      else analyze l2 l1 st
-
-	| ( Xsymbol(s1,_) , Xabstr(_,_,_,_) ) -> ("func",(im2xterm l1),(im2xterm l2),[],[])   
-	| ( Xappl(h1,_,_) , Xsymbol(_,_) ) -> 
-	    (
-	      let ty2 = type_of (im2xterm l2) 
-	      and xl1 = (im2xterm l1) in
-	      let head_l1 = (im2xterm h1)
-	      and xl2 = (im2xterm l2) in 
-		match ( is_variable head_l1 , is_variable xl2 , ((type_of xl1) = bt_o), (is_logical_connective xl2) ) with
-		    (true,true,_,_) -> ("flexflex",xl1,xl2,[],[])
-		  | (true,false,true,true) -> ("flexrigid+bool",xl1,xl2,[],[])
-		  | (true,false,true,false) -> ("flexrigid",xl1,xl2,[],[])
-		  | (false,false,true,_) -> ("bool",xl1,xl2,[],[])
-		  | (false,false,false,_) -> ("fail",xl1,xl2,[],[])
-		  | (false,true,_,_) -> 
-		      let occurstest = occurs_in st.index (im2xterm l1) xl2 in
-			Util.sysout 2 ("\n   Testing wheter "^(to_string xl2)^" occurs in "^(to_string (im2xterm l1))^" : "^(string_of_bool occurstest));
-			match (occurstest,(ty2 = bt_o),(is_logical_connective head_l1)) with
-			    (true,true,true) -> ("occurs+bool",(im2xterm l2),(im2xterm l1),[],[])
-			  | (false,true,true) -> ("bind+bool",(im2xterm l2),(im2xterm l1),[],[])
-			  | (true,_,_) -> ("occurs",(im2xterm l2),(im2xterm l1),[],[])
-			  | (false,_,_) -> ("bind",(im2xterm l2),(im2xterm l1),[],[])
-	    )
-	      
-
-	| ( Xappl(_,_,_) , Xappl(_,_,_) ) -> 
-	    let xl1 = (im2xterm l1)
-	    and xl2 = (im2xterm l2) in
-	    let head_l1 = get_head xl1 
-	    and args_l1 = get_args xl1
-	    and head_l2 = get_head xl2
-	    and args_l2 = get_args xl2 in 
-	      match ( (is_variable head_l1) , ((type_of xl1) = bt_o) , (is_logical_connective head_l1) ,
-		      (is_variable head_l2) , ((type_of xl2) = bt_o) , (is_logical_connective head_l2) ) with
-		  (true,_,_,true,_,_) -> ("flexflex",xl1,xl2,[],[])
-	     	| (true,_,_,false,true,true) -> ("flexrigid+bool",xl1,xl2,[],[])
-		| (true,_,_,false,_,_) -> ("flexrigid",xl1,xl2,[],[])
-		| (false,true,true,true,_,_) -> ("flexrigid+bool",xl2,xl1,[],[])
-		| (false,_,_,true,_,_) -> ("flexrigid",xl2,xl1,[],[])
-		| (false,_,true,false,_,true) -> 
-		   if head_l1 = head_l2 & (List.length args_l1) = (List.length args_l2) 
-		   then ("dec+bool",xl1,xl2,args_l1,args_l2)
-		   else ("dec",xl1,xl2,args_l1,args_l2)
-		| (false,_,false,false,_,true)
-			 if (not (is_variable head_l1)) & (not (is_variable head_l2)) 
-			     & (not (head_l1 = head_l2)) 
-			     & (is_logical_connective head_l1 || is_logical_connective head_l2)    
-			 then ("bool",xl2,xl1,[],[])
-			 else 
-			   if (not (is_variable head_l1)) & (not (is_variable head_l2)) 
-			       & head_l1 = head_l2 & (List.length args_l1) = (List.length args_l2) 
-			       & (not (is_logical_connective head_l1)) & (not (is_logical_connective head_l2))
-			   then ("dec",xl1,xl2,args_l1,args_l2)
-			   else ("fail",xl2,xl1,[],[])
-	 | Xabstr(_,_,_,_) -> ("func",(im2xterm l1),(im2xterm l2),[],[])
-	 | _ -> raise (Failure "analyze in pre_unify")
-	)
-    | Xabstr(_,_,_,_) ->
-	(
-	 match l2 with 
-	   Xsymbol(_,_) -> analyze l2 l1 st 
-	 | Xappl(hdl2,bdl2,tyl2) -> analyze l2 l1 st
-	 | Xabstr(vl2,vtyl2,bdl2,bdtyl2) -> ("func",(im2xterm l1),(im2xterm l2),[],[])
-	 | _ -> raise (Failure "analyze in pre_unify")
-	)
-    | _ -> raise (Failure "analyze in pre_unify")
-  in
-  let result = 
-    if lit.lit_polarity
-    then ("otherlit",lit.lit_term,lit.lit_term,[],[])
-    else 
-      match (xterm2im lit.lit_term 6) with
-	Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) -> analyze l1 l2 st
-      | _ -> ("otherlit",lit.lit_term,lit.lit_term,[],[])
-  in    
-
-  let (s,t1,t2,lst1,lst2) = result in  
-   Util.sysout 2 ("\n  Analysis of Lit: "^(lit_literal_to_string lit)^" ---> ("^s^","^(to_string t1)^","^(to_string t2)^","^(List.fold_right (fun t s -> (to_string t)^"|"^s) lst1 "")^","^(List.fold_right (fun t s -> (to_string t)^"|"^s) lst2 "")^")"); 
-   
-  result
-
-*)	
-	
-let analyze_flexflex_unilits (lits:(role lit_literal) list) = 
-  let (flexflex,noflexflex) = List.partition (fun l -> is_flexflex_unilit l) lits in
-  (flexflex,noflexflex)
-    
-    
 let func_ext_terms (t1:term) (t2:term) (st:state) (free_vars:term list) =
   let argty_t1 = arg_type (Term.type_of (type_of_symbol st.signature) t1) in
   let fv_type_list = List.map (fun v -> type_of_symbol st.signature (get_symbol v)) free_vars in
@@ -3255,60 +2754,55 @@ let func_ext_terms (t1:term) (t2:term) (st:state) (free_vars:term list) =
   let (new1,new2) = ((beta_normalize (Appl(t1,skoterm))),(beta_normalize (Appl(t2,skoterm)))) in
   (new1,new2)
 
+let funcOrDecTouched = ref "FuncOrDecTouched"
+let getFuncOrDecTouched = !funcOrDecTouched
+
 let func_ext (t1:term) (t2:term) (st:state) (free_vars:term list) =
   let (new1,new2) = func_ext_terms t1 t2 st free_vars in
-  lit_mk_uni_literal (term2xterm new1) (term2xterm new2) ""
-    
-   
-let bool_ext t1 t2 =  
-  [(lit_mk_neg_literal t1);(lit_mk_neg_literal t2)],
-  [(lit_mk_pos_literal t1);(lit_mk_pos_literal t2)] 
-    
-    
-let make_dec_lits (termlist1:(role xterm) list) (termlist2:(role xterm) list) =
-  List.map2 (fun t1 t2 -> lit_mk_uni_literal t1 t2 "") termlist1 termlist2 
-    
-    
-let flexrigid_binding_pairs (t1:term) (t2:term) (st:state) =
-  Util.sysout 3 ("\n :flexrigid_binding_pairs: \n   :t1: "^(Term.to_hotptp t1)^"\n   :t2: "^(Term.to_hotptp t2)^"\n");
-  let ty1 = (Term.type_of (type_of_symbol st.signature) t1)
-  and ty2 = (Term.type_of (type_of_symbol st.signature) t2) in
-  let hd1 = Term.get_head_symbol t1 
+  lit_mk_uni_literal st.signature (term2xterm new1) (term2xterm new2) getFuncOrDecTouched
+
+let bool_ext st t1 t2 info =  
+  [lit_mk_literal st.signature t1 false info; lit_mk_literal st.signature t2 false info],
+  [lit_mk_literal st.signature t1 true info; lit_mk_literal st.signature t2 true info]
+
+
+let make_dec_lits st (termlist1 : role xterm list) (termlist2 : role xterm list) =
+  List.map2 (fun t1 t2 -> lit_mk_uni_literal st.signature t1 t2 getFuncOrDecTouched) termlist1 termlist2
+
+let flexrigid_binding_pairs (t1 : term) (t2 : term) (st : state) =
+  Util.sysout 3 ("\n :flexrigid_binding_pairs: \n   :t1: " ^
+                   Term.to_hotptp t1 ^ "\n   :t2: " ^ Term.to_hotptp t2 ^ "\n");
+  let ty1 = Term.type_of (type_of_symbol st.signature) t1
+  and ty2 = Term.type_of (type_of_symbol st.signature) t2 in
+  let hd1 = Term.get_head_symbol t1
   and hd2 = Term.get_head_symbol t2 in
   let ty_hd1 = Term.type_of (type_of_symbol st.signature) hd1 in
-  let (flag1,arg_tys_l1) = (types_of_all_arg_terms_up_to_term t1 hd1 (type_of_symbol st.signature))
-  and (flag2,arg_tys_l2) = (types_of_all_arg_terms_up_to_term t2 hd2 (type_of_symbol st.signature))
+
+(*"flag" is just a check to make sure that hd{1,2} was found at the head of t{1,2}.
+  arg_tys_l{1,2} are the types of the arguments of hd{1,2} in t{1,2}.*)
+  let (flag1, arg_tys_l1) = types_of_all_arg_terms_up_to_term t1 hd1 (type_of_symbol st.signature)
+  and (flag2, arg_tys_l2) = types_of_all_arg_terms_up_to_term t2 hd2 (type_of_symbol st.signature)
   in
-  if Term.is_variable hd1 & (not (Term.is_variable hd2)) & (not (is_basetype ty_hd1)) & flag1 & flag2
-  then 
-    let list = ((proj_bindings hd1 arg_tys_l1 ty1 st)@[imi_binding hd1 arg_tys_l1 ty1 hd2 arg_tys_l2 ty2 st]) in
-    let ordered_list = 
-      List.sort 
-	(fun x y ->  
-	   let l1 = List.length (Term.free_vars x) and l2 = List.length (Term.free_vars y) in
-           if l1 <= l2 then -1 else 1)
-	list in
-    let result = 
-      List.map (fun binding -> ((term2xterm hd1),(term2xterm binding)))
-	ordered_list in
-      Util.sysout 3 ("\nt1: "^(Term.to_hotptp t1)^"\nt2: "^(Term.to_hotptp t2)^"\n");
-      result
-  else raise (Failure "flexrigid_binding_lits in pre_unify")
-
-
-(*
-let create_res_clause (flexflexlits:((role lit_literal) list)) (otherlits:((role lit_literal) list)) (subst:(((role xterm) * (role xterm)) list)) (st:state)  (cl:cl_clause) =
-  let free_vars = litlist_free_vars (flexflexlits@otherlits) in
-  let subst_string_list = List.map (fun (v,t) -> ("bind("^(to_hotptp v)^",$thf("^(to_hotptp t)^"))")) subst in
-  let subst_string = 
-   match subst_string_list with
-      [] -> ""
-    | hd::tl -> "["^(List.fold_left (fun s sub -> sub^","^s) hd tl)^"]" in  
-  mk_clause (otherlits@flexflexlits) (inc_clause_count st) free_vars
-  ("extuni",[(cl.cl_number,subst_string)],"") cl.cl_origin st    
-*)
-
-
+    if Term.is_variable hd1 & (not (Term.is_variable hd2)) &
+      (not (is_basetype ty_hd1)) & flag1 & flag2 then
+        let list =
+          imi_binding hd1 arg_tys_l1 ty1 hd2 arg_tys_l2 ty2 st ::
+            proj_bindings hd1 arg_tys_l1 ty1 st in
+        let ordered_list =
+          List.sort
+            (fun x y ->
+               let l1 = List.length (Term.free_vars x)
+               and l2 = List.length (Term.free_vars y)
+               in
+                 if l1 <= l2 then -1 else 1)
+            list in
+        let result =
+          List.map (fun binding -> (term2xterm hd1, term2xterm binding))
+            ordered_list
+        in
+          Util.sysout 3 ("\nt1: "^(Term.to_hotptp t1)^"\nt2: "^(Term.to_hotptp t2)^"\n");
+          result
+    else raise (Failure "flexrigid_binding_lits in pre_unify")
 
 let substitute_right pairlist subst st =
   List.map (fun (l,r) -> (l,(substitute st.index l subst))) pairlist
@@ -3322,46 +2816,47 @@ let has_choice_hd xterm st =
 	    alpha = beta & List.mem hd st.choice_functions 
 	| _ -> false
 
+(*Create a result clause from the output of the pre-unification algorithm.*)
+let create_res_clause
+    (subrule : string)
+    (flexflexlits : role lit_literal list)
+    (otherlits : role lit_literal list)
+    (subst : (role xterm * role xterm) list)
+    (st : state)
+    (cl : cl_clause) =
+  let free_vars = litlist_free_vars (flexflexlits @ otherlits) in
+  let new_subst_pre = List.filter (fun (v, t) -> (List.mem (xterm2term v) cl.cl_free_vars)) subst in
+  let new_subst = substitute_right new_subst_pre subst st in
+  let subst_string_list = List.map (fun (v, t) -> ("bind(" ^ to_hotptp v ^ ",$thf(" ^ to_hotptp t ^ "))")) new_subst in
+  let subst_string =
+    match subst_string_list with
+        [] -> ""
+      | hd :: tl ->
+          "[" ^ List.fold_left (fun s sub -> s ^ "," ^ sub) hd tl ^ "]"
+  in
+  let cl_new =
+    mk_clause (otherlits @ flexflexlits) (inc_clause_count st) free_vars
+      ("extuni" ^ subrule, [(cl.cl_number, subst_string)], "") cl.cl_origin st
+  in
+	let _ = Util.sysout 3 ("\n\ new_clause: " ^ cl_clause_to_protocol cl)
+  in               
+    cl_new
 
-
-let create_res_clause (flexflexlits:((role lit_literal) list)) (otherlits:((role lit_literal) list)) (subst:(((role xterm) * (role xterm)) list)) (st:state)  (cl:cl_clause) =
-  let free_vars = litlist_free_vars (flexflexlits@otherlits) in
-  let new_subst_pre = List.filter (fun (v,t) -> (List.mem (xterm2term v) cl.cl_free_vars)) subst in
-  let new_subst =  substitute_right new_subst_pre subst st in 
-  let subst_string_list = List.map (fun (v,t) -> ("bind("^(to_hotptp v)^",$thf("^(to_hotptp t)^"))")) new_subst in
-  let subst_string = 
-   match subst_string_list with
-      [] -> ""
-    | hd::tl -> "["^(List.fold_left (fun s sub -> s^","^sub) hd tl)^"]" in  
-  mk_clause (otherlits@flexflexlits) (inc_clause_count st) free_vars
-  ("extuni",[(cl.cl_number,subst_string)],"") cl.cl_origin st    
-
-
-
-(* version with choice ---- not used 
-
-let create_res_clause (flexflexlits:((role lit_literal) list)) (otherlits:((role lit_literal) list)) (subst:(((role xterm) * (role xterm)) list)) (st:state)  (cl:cl_clause) (used_choice:bool)=
-  let free_vars = litlist_free_vars (flexflexlits@otherlits) in
-  let new_subst_pre = List.filter (fun (v,t) -> ((List.mem (xterm2term v) cl.cl_free_vars) || (has_choice_hd v st))) subst in
-  let new_subst =  substitute_right new_subst_pre subst st in 
-  let subst_string_list = List.map (fun (v,t) -> ("bind("^(to_hotptp v)^",$thf("^(to_hotptp t)^"))")) new_subst in
-  let subst_string = 
-   match subst_string_list with
-      [] -> ""
-    | hd::tl -> "["^(List.fold_left (fun s sub -> s^","^sub) hd tl)^"]" in  
-  if used_choice 
-  then 
-     mk_clause (otherlits@flexflexlits) (inc_clause_count st) free_vars
-     ("extuniWithChoice",[(cl.cl_number,subst_string)],"") cl.cl_origin st    
-  else 
-     mk_clause (otherlits@flexflexlits) (inc_clause_count st) free_vars
-     ("extuni",[(cl.cl_number,subst_string)],"") cl.cl_origin st    
-
-*)
-
+let create_intermediate_uni_step
+    (subrule : string)
+    (flexflexlits : role lit_literal list)
+    (otherlits : role lit_literal list)
+    (subst : (role xterm * role xterm) list)
+    (st : state)
+    (from_cl : cl_clause) =
+  if st.flags.expand_extuni then
+    create_res_clause subrule flexflexlits otherlits subst st from_cl
+  else from_cl
 
 let sub (pair:((role xterm) * (role xterm))) (st:state) (lits:(role lit_literal) list) = 
-  List.map (fun l -> substitute_lit l st [pair]) lits
+  List.map 
+    (fun l -> substitute_lit ~info:getFuncOrDecTouched l st [pair])
+    lits
 
 
 let arg_types_are_compatible list1 list2 st =    
@@ -3388,255 +2883,273 @@ let rec choicehelp l r uniliterals st =
                *)
 	    | _ ->
 		let var = create_and_insert_new_free_var_with_simple_name qtype st in
-		let newlit1 = (lit_mk_neg_literal (term2xterm (beta_normalize (Appl(p,var))))) in
-		let newlit2 = (lit_mk_pos_literal (term2xterm (beta_normalize (Appl(p,(Appl(Symbol choice,p))))))) in
-		let newlit3 = (lit_mk_pos_literal (term2xterm (beta_normalize (Appl(p,var))))) in
-		let newlit4 = (lit_mk_neg_literal (term2xterm (beta_normalize (Appl(p,(Appl(Symbol choice,(Abstr(var,qtype,(Appl(Symbol("~"),(Appl(p,var))))))))))))) in
+		let newlit1 = (lit_mk_neg_literal st.signature (term2xterm (beta_normalize (Appl(p,var))))) in
+		let newlit2 = (lit_mk_pos_literal st.signature (term2xterm (beta_normalize (Appl(p,(Appl(Symbol choice,p))))))) in
+		let newlit3 = (lit_mk_pos_literal st.signature (term2xterm (beta_normalize (Appl(p,var))))) in
+		let newlit4 = (lit_mk_neg_literal st.signature (term2xterm (beta_normalize (Appl(p,(Appl(Symbol choice,(Abstr(var,qtype,(Appl(Symbol("~"),(Appl(p,var))))))))))))) in
 		  ([newlit1;newlit2]@uniliterals,[newlit3;newlit4]@uniliterals,true)
 	  )
     | (Appl(l1,l2),Appl(r1,r2)) -> 
            Util.sysout 3 ("\n choicehelp: B"); 
            if arg_types_are_compatible [term2xterm l2] [term2xterm r2] st 
            then 
-             let newunilit = lit_mk_uni_literal (term2xterm l2) (term2xterm r2) "" in
+             let newunilit = lit_mk_uni_literal st.signature (term2xterm l2) (term2xterm r2) "" in
                choicehelp l1 r1 (newunilit::uniliterals) st
            else ([],[],false)
     | _ -> ([],[],false)
-    
 
-(*    old versions, not correct
-let rec choicehelp l r uniliterals st =
-  Util.sysout 3 ("\n choicehelp: "^(Term.to_string l)^"  "^(Term.to_string r));
-  match (l,r) with
-      (Appl(Symbol choice,p),q) -> 
-        Util.sysout 3 ("\n choicehelp: A"); 
-	let qtype = Term.type_of (type_of_symbol st.signature) q in
-	  (match qtype with
-	      Basetype("$o") -> (uniliterals,uniliterals)
-               (*
-		let newlit1 = lit_mk_neg_literal (term2xterm q) in
-		let newlit2 = lit_mk_pos_literal (term2xterm q) in
-		  (newlit1::uniliterals,newlit2::uniliterals)
-               *)
-	    | _ ->
-		let newvar = create_and_insert_new_free_var_with_simple_name qtype st in
-		let newlit1 = (lit_mk_neg_literal (term2xterm (beta_normalize (Appl(p,newvar))))) in
-		let newlit2 = (lit_mk_pos_literal (term2xterm (beta_normalize (Appl(p,(Appl(Symbol choice,p))))))) in
-		let newlit3 = (lit_mk_pos_literal (term2xterm (beta_normalize (Appl(p,q))))) in
-		  ([newlit1;newlit2]@uniliterals,[newlit1;newlit3]@uniliterals)
-	  )
-    | (Appl(l1,l2),Appl(r1,r2)) -> 
-        Util.sysout 3 ("\n choicehelp: B"); 
-	let newunilit = lit_mk_uni_literal (term2xterm l2) (term2xterm r2) "" in
-	  choicehelp l1 r1 (newunilit::uniliterals) st
-    | _ -> raise (Failure "Unknown case returned by choice") 
-*)	
+(*This code is not actually used in Leo2 -- see "pre_unify_new" instead.*)
+(*Wrapper for Leo2's extensional pre-unification algorithm. It defines the algorithm
+  internally, and only uses the algorithm if there is a unification literal in "cl";
+  otherwise it returns "cl".*)
+let pre_unify_ext (cl : cl_clause) (st : state) =
+  (*This is Leo2's extensional pre-unification algorithm.
+    It consumes "tuples" (explained below) *)
+  let rec pre_unify'
+      (* "tuples" contains unilits, flexflexlits, otherlits, subst:
+         these stand for unification literals, flex-flex literals, other literals
+         and substitutions.
 
-(*
-let newChoiceInstTuples t1 t2 (unilits,flexflexlits,otherlits,subst) st = 
-  let choiceVar = (get_head_symbol t1) in
-  let choiceType =
-     match type_of choiceVar with
-         Funtype(Funtype(alpha,Basetype("$o")),beta) -> if alpha = beta then Funtype(alpha,Basetype("$o")) else raise (Failure "unexpected case in newChoiceInstTuples")
-      | _ -> raise (Failure "unexpected case in newChoiceInstTuples") in
-  let newVar = create_and_insert_new_free_var_with_simple_name choiceType st in
-  let listOfSubsts = List.map (fun choiceOp -> (choiceVar,(term2xterm (Abstr(newVar,choiceType,Appl(choiceOp,newVar)))))) st.choice_functions in
-  let listOfNewTuples = 
-      List.map (fun newsub -> (sub newsub st unilits,sub newsub st flexflexlits,sub newsub st otherlits,newsub::subst)) listOfSubsts in
-    listOfNewTuples 
-*)
+         All literals start out in unilits, then are classified by "analyze_unilit"
+         into flexflex, other lits (i.e., not unification literals), and classifies
+         non-flexflex unification literals (as trivial, flexflex, bind, etc).
+         Unification literals may become otherlits (e.g. see mention of "a = b").
+         All (not just the head) literals may be instantiated during the course of
+         unification. This applies to literals in the current "unification problem",
+         not in other (i.e., "other_tuples").
 
+         Each tuple may potentially:
+           * give rise to a clause, or
+           * result in a transformed tuple, or
+           * produce other new tuples (e.g. in the case of flexrigid).
+      *)
+      (tuples : (role lit_literal list *
+                   role lit_literal list *
+                   role lit_literal list *
+                   (role xterm * role xterm) list) list)
+      (st : state)
+      (* Accumulates clauses which are to be added to the search space
+         These are added as a single clause at the end of the search, as an "extuni" inference.*)
+      (accu : cl_clause list)
+      (*FIXME this parameter does not appear to be used, since
+              it's currently not checked anywhere.*)  
+      (depth : int)
+      (*FIXME not fully sure how this works*)  
+      (something_done : bool) =
+    begin
+      (*Produce a trace for debugging*)
+      let tuplestring =
+        List.fold_right
+          (fun (ul, ffl, ol, subst) s ->
+             let subst_string = List.fold_right (fun (v, t) s -> (" " ^ to_string v ^ "/" ^ to_string t ^ " " ^ s)) subst "" in
+               ("\n ul=[" ^ lit_litlist_to_protocol ul ^ "]\n ffl=[" ^ lit_litlist_to_protocol ffl ^ "]\n ol=[" ^ lit_litlist_to_protocol ol ^ "]\n subst=[" ^ subst_string ^ "]\n" ^ s)) tuples ""
+      in
+        Util.sysout 3 ("\n\nEnter pre_unify' with: " ^ tuplestring ^ "st-not-printed,accu-not-printed," ^ string_of_int depth ^ "," ^ string_of_bool something_done);
 
-
-
-
-   
-    
-let pre_unify_ext (cl:cl_clause) (st:state) =
-  
-  let rec pre_unify'  (tuples:(((role lit_literal) list) * ((role lit_literal) list) * ((role lit_literal) list) * (((role xterm) * (role xterm)) list)) list) (st:state) (accu:cl_clause list) (depth: int) (something_done:bool) = 
-
-      (let tuplestring = 
-	 List.fold_right (fun (ul,ffl,ol,subst) s -> 
-			    let subst_string = List.fold_right (fun (v,t) s -> (" "^(to_string v)^"/"^(to_string t)^" "^s)) subst "" in
-			      ("\n ul=["^(lit_litlist_to_protocol ul)^"]\n ffl=["^(lit_litlist_to_protocol ffl)^"]\n ol=["^(lit_litlist_to_protocol ol)^"]\n subst=["^subst_string^"]\n"^s)) tuples "" in     
-	 Util.sysout 3 ("\n\nEnter pre_unify' with: "^tuplestring^"st-not-printed,accu-not-printed,"^(string_of_int depth)^","^(string_of_bool something_done))); 
-    
-    (* if depth > st.flags.max_uni_depth then accu else  *)
-    match tuples with
-	[] -> (* no more to do; give back the clauses in the accumulator *) 
-	  (Util.sysout 3 "\n I am here";
-	   accu
-	  )
-      | (unilits,flexflexlits,otherlits,subst)::rest_tuples -> (* we work on the first tuple *)
-	  if (List.length  subst > st.flags.max_uni_depth) (* || (depth > st.flags.max_uni_depth) *)
-	  then pre_unify' rest_tuples st accu depth something_done
-	  else
-	    (
-	      match unilits with
-		  [] -> (* new solution found -- provided that the flexflexlits are indeed all flexflex *)
-		    if List.exists (fun lit -> not (is_flexflex_unilit lit)) flexflexlits 
-		    then (* recurse on the non flexflex literals *)
-		      let (ff,noff) = analyze_flexflex_unilits flexflexlits in
-			pre_unify' ((noff,ff,otherlits,subst)::rest_tuples) st accu depth something_done
-		    else (* new solution found; recurse on rest_tuples and add a new clause to accumulator *)
-		      if something_done 
-		      then
-			let new_cl_list = simplify (create_res_clause flexflexlits otherlits subst st cl) st in
-			  pre_unify' rest_tuples st (new_cl_list@accu) depth true
-		      else pre_unify' rest_tuples st accu depth false
-		| lit::rest_unilits -> (* work on first unification literal *)
-		    (
-		      match analyze_unilit lit st with
-			  ("otherlit",_,_,_,_) -> (* the lit is not a unification literal;
-						     move to otherlits and recurse
-						     example: (p a)^T
-						  *)
-			    pre_unify' ((rest_unilits,flexflexlits,(lit::otherlits),subst)::rest_tuples) st accu depth something_done
-			      
-			| ("fail",_,_,_,_) -> (* failure check was positive; recurse on rest_tuples 
-						 example: a = b
-						 only in special situations (two unilits) allow for test of second lit to allow
-						 the return of one negated equation
-					      *)
-			    if 
-			      ( (List.length rest_unilits) = 1 & (List.length otherlits) = 0 )
-			      || 
-				( something_done & (List.length rest_unilits) = 0 & (List.length otherlits) = 0 ) 
-			    then
-			      pre_unify' ((rest_unilits,flexflexlits,(lit::otherlits),subst)::rest_tuples) st accu depth something_done
-			    else
-			      pre_unify' rest_tuples st accu depth true
-			| ("occurs",_,_,_,_) -> (* occurs check was positive; recurse on rest_tuples 
-							 example: X =^{i} (f X)
-						      *)
-				  pre_unify' rest_tuples st accu depth true
-			| ("occurs+bool",t1,t2,_,_) -> (* occurs check was positive but terms are of Boolean type; 
-								apply Boolean extensionality and recurse;
-								example: X =^{o} (or X Y)
-							     *)
-				  let (newlits1,newlits2) = bool_ext t1 t2 in 
-				    pre_unify' ((rest_unilits,flexflexlits,(newlits1@otherlits),subst)::
-						  ((rest_unilits,flexflexlits,(newlits2@otherlits),subst)::rest_tuples)) st accu depth true
-			| ("bind",v,t,_,_) -> (* solved unification literal; apply binding and recurse 
-						 example: X = t
-					      *)
-			    let new_tuple = ((sub (v,t) st rest_unilits),(sub (v,t) st flexflexlits), (sub (v,t) st otherlits),
-					     (subst@[(v,t)])) in
-			      pre_unify' (new_tuple::rest_tuples) st accu depth true
-			| ("bind+bool",v,t,_,_) -> (* solved unification literal and terms are of Boolean type; 
-						      apply binding and recurse, but also apply boolean extensionality 
-						      example: X =^{o} (or t1 t2)
-						   *)
-			    let new_tuple = ((sub (v,t) st rest_unilits),(sub (v,t) st flexflexlits), (sub (v,t) st otherlits),
-					     (subst@[(v,t)])) in
-			    let (newlits1,newlits2) = bool_ext v t in 
-			      pre_unify' ((rest_unilits,flexflexlits,(newlits1@otherlits),subst)::
-					    ((rest_unilits,flexflexlits,(newlits2@otherlits),subst)::(new_tuple::rest_tuples))) st accu depth true
-			| ("triv",_,_,_,_) -> (* trivial unification literal; recurse; 
-						 example: a = a 
-					      *)
-			    pre_unify' ((rest_unilits,flexflexlits,otherlits,subst)::rest_tuples) st accu depth true
-			| ("flexflex",t1,t2,_,_) -> (* flexflex unification literal; move it and recurse 
-						     example: (H a) = (G b)
-						  *)
-
-			    pre_unify' ((rest_unilits,(lit::flexflexlits),otherlits,subst)::rest_tuples) st accu depth true
-			   (* let new_tuple = ((sub (t1,t2) st rest_unilits),(sub (t1,t2) st flexflexlits), (sub (t1,t2) st otherlits),(subst@[(t1,t2)])) in
-			      pre_unify' ((rest_unilits,(lit::flexflexlits),otherlits,subst)::(new_tuple::rest_tuples)) st accu depth true *)
-
-			| ("func",t1,t2,_,_) -> (* functional unification literal; apply extensionality and recurse 
-						   example: (f a) =^{a->b} (g b c)
-						*)
-			    let free_vars = litlist_free_vars (unilits@flexflexlits@otherlits) in
-			    let newlit = func_ext (xterm2term t1) (xterm2term t2) st free_vars in
-			      pre_unify' (((newlit::rest_unilits),flexflexlits,otherlits,subst)::rest_tuples) st accu depth true
-			| ("bind+func",t1,t2,_,_) -> (* functional unification literal; apply extensionality and recurse 
-						   example: (f a) =^{a->b} (g b c)
-						*)
-                            let new_tuple = ((sub (t1,t2) st rest_unilits),(sub (t1,t2) st flexflexlits), (sub (t1,t2) st otherlits),
-					     (subst@[(t1,t2)])) in
-			    let free_vars = litlist_free_vars (unilits@flexflexlits@otherlits) in
-			    let newlit = func_ext (xterm2term t1) (xterm2term t2) st free_vars in
-			      pre_unify' (((newlit::rest_unilits),flexflexlits,otherlits,subst)::(new_tuple::rest_tuples)) st accu depth true
-			| ("dec",hd1,hd2,args1,args2) -> (* decomposition unification literal; decompose and recurse
-							    example:  (f a b) = (f c d)
-							 *)
-			    let newlits = make_dec_lits args1 args2 in
-			      pre_unify' (((newlits@rest_unilits),flexflexlits,otherlits,subst)::
-					    ((rest_unilits,flexflexlits,(newlits@otherlits),subst)::rest_tuples)) st accu depth true
-				(* *** the above was modified June 30 2009 *** *)
-				
-			| ("dec=",hd1,hd2,args1,args2) -> (* decomposition unification literal; decompose and recurse
-							     example:  (= a b) = (= c d)
-							  *)
-			    let newlits1 = make_dec_lits args1 args2 and
-				newlits2 = make_dec_lits (List.rev args1) args2 in
-			      pre_unify' (((newlits1@rest_unilits),flexflexlits,otherlits,subst)::
-					    (((newlits2@rest_unilits),flexflexlits,otherlits,subst)::
-					       ((rest_unilits,flexflexlits,(newlits1@otherlits),subst)::    (* new for BrownSmolk-3.thf *)
-						  ((rest_unilits,flexflexlits,(newlits2@otherlits),subst):: (* new for BrownSmolk-3.thf *) 
-						     rest_tuples
-						  ))
-					    )) st accu depth true
-			| ("dec+bool",t1,t2,args1,args2) -> (* decomposition unification literal; decompose, 
-							       apply Boolean extensionality and recurse
-							       example:  (f a b) = (f c d)
-							    *)
-			    let newlits = make_dec_lits args1 args2 in
-			    let (newlits1,newlits2) = bool_ext t1 t2 in
-			      pre_unify'  ((rest_unilits,flexflexlits,(newlits1@otherlits),subst)::
-					     ((rest_unilits,flexflexlits,(newlits2@otherlits),subst)::			       
-						(((newlits@rest_unilits),flexflexlits,otherlits,subst)::
-						   ((rest_unilits,flexflexlits,(newlits@otherlits),subst):: (* new for BrownSmolk-3.thf *)
-						      rest_tuples
-						   )
-						))) st accu depth true
-			| ("bool",t1,t2,[],[]) -> (* Boolean unification literal; 
-						     apply Boolean extensionality and recurse
-						     example:  (or a b) = (f c d)
-						  *)
-			    let (newlits1,newlits2) = bool_ext t1 t2 in
-			      pre_unify'  ((rest_unilits,flexflexlits,(newlits1@otherlits),subst)::
-					     ((rest_unilits,flexflexlits,(newlits2@otherlits),subst)::rest_tuples)) st accu depth true
-			| ("flexrigid",t1,t2,_,_) -> (* flexrigid unification literal; 
-							determine bindings and recurse with increased depth 
-							example: (H a) = (g b)
-						     *)
-			    let bindingpairs = flexrigid_binding_pairs (xterm2term t1) (xterm2term t2) st in
-			      Util.sysout 3 ("\n Bindingpairs: "^(List.fold_right (fun (v,t) s -> ("("^(to_string v)^","^(to_string t)^"),"^s)) bindingpairs ""));
-			      let new_tuples = 
-				(List.map (fun (v,t) -> ((sub (v,t) st unilits),(sub (v,t) st flexflexlits), 
-							 (sub (v,t) st otherlits),(subst@[(v,t)])))
-				   bindingpairs) in
-			      let tuplestring = List.fold_right (fun (ul,ffl,ol,subst) s -> ("("^(lit_litlist_to_protocol ul)^","^(lit_litlist_to_protocol ffl)^","^(lit_litlist_to_protocol ol)^",subst-not-printed),"^s)) new_tuples "" in  
-				Util.sysout 3 ("\n  new_tuples: "^tuplestring);
-				pre_unify' (new_tuples@rest_tuples) st accu (depth+1) true
-			| ("flexrigid+bool",t1,t2,_,_) -> (* flexrigid unification literal and terms are of Boolean type; 
-							     determine bindings and recurse with increased depth, 
-							     but also apply Boolean extensionality 
-							     example: (H a) =^{o} (or t1 t2)
-							  *)
-			    let bindingpairs = flexrigid_binding_pairs (xterm2term t1) (xterm2term t2) st in
-			      Util.sysout 3 ("\n Bindingpairs: "^(List.fold_right (fun (v,t) s -> ("("^(to_string v)^","^(to_string t)^"),"^s)) bindingpairs ""));
-			      let new_tuples = 
-				List.map (fun (v,t) -> ((sub (v,t) st unilits),(sub (v,t) st flexflexlits), 
-							(sub (v,t) st otherlits),(subst@[(v,t)])))
-				  bindingpairs in
-			      let (newlits1,newlits2)  = bool_ext t1 t2 in 
-				pre_unify' ((rest_unilits,flexflexlits,(newlits1@otherlits),subst)::
-					      ((rest_unilits,flexflexlits,(newlits2@otherlits),subst)::
-						 (new_tuples@rest_tuples))) st accu (depth+1) true
-			| _ -> raise (Failure "Unknown case returned by analyze_unilit")
-		    )
-	    )
+        (*The algorithm*)
+        (* if depth > st.flags.max_uni_depth then accu else  *)
+        match tuples with
+            [] -> (* no more to do; give back the clauses in the accumulator *)
+              (Util.sysout 3 "\n I am here";
+               accu)
+          | (unilits, flexflexlits, otherlits, subst) :: rest_tuples -> (* we work on the first tuple *)
+              if List.length subst > st.flags.max_uni_depth (* || (depth > st.flags.max_uni_depth) *)
+              then pre_unify' rest_tuples st accu depth something_done
+              else
+                begin
+                  match unilits with
+                      [] -> (* new solution found -- provided that the flexflexlits are indeed all flexflex,
+                               since they might have been instantiated by "bind"s during the course of unification.*)
+                        if List.exists (fun lit -> not (is_flexflex_unilit lit)) flexflexlits then
+                          (* recurse on the non flexflex literals *)
+                          let (ff, noff) = analyze_flexflex_unilits flexflexlits
+                          in pre_unify' ((noff, ff, otherlits, subst) :: rest_tuples) st accu depth something_done
+                        else
+                          (* new solution found; recurse on rest_tuples and add a new clause to accumulator *)
+                          if something_done then
+                            let new_cl_list = simplify (create_res_clause "" flexflexlits otherlits subst st cl) st
+                            in pre_unify' rest_tuples st (new_cl_list @ accu) depth true(*FIXME shouldn't this be reset to "false"?*)  
+                          else
+                            pre_unify' rest_tuples st accu depth false
+                    | lit :: rest_unilits -> (* work on first unification literal *)
+                        begin
+                          match analyze_unilit lit st with
+                              ("otherlit",_,_,_,_) -> (* the lit is not a unification literal;
+                                                         move to otherlits and recurse
+                                                         example: (p a)^T
+                                                      *)
+                                pre_unify' ((rest_unilits, flexflexlits, lit :: otherlits, subst) :: rest_tuples) st accu depth something_done
+                            | ("fail",_,_,_,_) -> (* failure check was positive; recurse on rest_tuples
+                                                     example: a = b
+                                                     only in special situations (two unilits) allow for test of second lit to allow
+                                                     the return of one negated equation
+                                                  *)
+                                (*FIXME The logic of this block of code isn't clear*)  
+                                if
+                                  (List.length rest_unilits = 1 & List.length otherlits = 0) ||
+                                    (something_done & List.length rest_unilits = 0 & List.length otherlits = 0)
+                                then
+                                  pre_unify' ((rest_unilits, flexflexlits, lit :: otherlits, subst) :: rest_tuples) st accu depth something_done
+                                else
+                                  pre_unify' rest_tuples st accu depth true
+                            | ("occurs",_,_,_,_) -> (* occurs check was positive; recurse on rest_tuples
+                                                       example: X =^{i} (f X)
+                                                    *)
+                                pre_unify' rest_tuples st accu depth true
+                            | ("occurs+bool",t1,t2,_,_) -> (* occurs check was positive but terms are of Boolean type;
+                                                              apply Boolean extensionality and recurse;
+                                                              example: X =^{o} (or X Y)
+                                                           *)
+                                let (newlits1, newlits2) = bool_ext st t1 t2 lit.lit_info
+                                in
+                                  (*FIXME why are newlits{1,2} put in otherlits, rather than unilits?*)  
+                                  pre_unify' ((rest_unilits, flexflexlits, newlits1 @ otherlits, subst) ::
+                                                ((rest_unilits, flexflexlits, newlits2 @ otherlits, subst) :: rest_tuples)) st accu depth true
+                            | ("bind",v,t,_,_) -> (* solved unification literal; apply binding and recurse
+                                                     example: X = t
+                                                  *)
+                                let new_tuple = (sub (v, t) st rest_unilits,
+                                                 sub (v, t) st flexflexlits,
+                                                 sub (v,t) st otherlits,
+                                                 subst @ [(v, t)])
+                                in pre_unify' (new_tuple :: rest_tuples) st accu depth true
+                            | ("bind+bool",v,t,_,_) -> (* solved unification literal and terms are of Boolean type;
+                                                          apply binding and recurse, but also apply boolean extensionality
+                                                          example: X =^{o} (or t1 t2)
+                                                       *)
+                                let new_tuple = (sub (v, t) st rest_unilits,
+                                                 sub (v, t) st flexflexlits,
+                                                 sub (v, t) st otherlits,
+                                                 subst @ [(v, t)]) in
+                                let (newlits1, newlits2) = bool_ext st v t lit.lit_info
+                                in
+                                  pre_unify' ((rest_unilits, flexflexlits, newlits1 @ otherlits, subst) ::
+                                                ((rest_unilits, flexflexlits, newlits2 @ otherlits, subst) ::
+                                                   new_tuple :: rest_tuples)) st accu depth true
+                            | ("triv",_,_,_,_) -> (* trivial unification literal; recurse;
+                                                     example: a = a
+                                                  *)
+                                pre_unify' ((rest_unilits, flexflexlits, otherlits, subst) :: rest_tuples) st accu depth true
+                            | ("flexflex",t1,t2,_,_) -> (* flexflex unification literal; move it and recurse
+                                                           example: (H a) = (G b)
+                                                        *)
+                                pre_unify' ((rest_unilits, lit :: flexflexlits, otherlits, subst) :: rest_tuples) st accu depth true
+                            | ("func",t1,t2,_,_) -> (* functional unification literal; apply extensionality and recurse
+                                                       example: (f a) =^{a->b} (g b c)
+                                                    *)
+                                let free_vars = litlist_free_vars (unilits @ flexflexlits @ otherlits) in
+                                let newlit = func_ext (xterm2term t1) (xterm2term t2) st free_vars
+                                in
+                                  pre_unify' ((newlit :: rest_unilits, flexflexlits, otherlits, subst) :: rest_tuples) st accu depth true
+                            | ("bind+func",t1,t2,_,_) -> (* functional unification literal; apply extensionality and recurse
+                                                            example: (f a) =^{a->b} (g b c)
+                                                         *)
+                                let new_tuple = (sub (t1, t2) st rest_unilits,
+                                                 sub (t1, t2) st flexflexlits,
+                                                 sub (t1,t2) st otherlits,
+	                                               subst @ [(t1, t2)]) in
+                                let free_vars = litlist_free_vars (unilits @ flexflexlits @ otherlits) in
+                                let newlit = func_ext (xterm2term t1) (xterm2term t2) st free_vars
+                                in
+                                  pre_unify' ((newlit :: rest_unilits, flexflexlits, otherlits, subst) ::
+                                                new_tuple :: rest_tuples) st accu depth true
+                            | ("dec",hd1,hd2,args1,args2) -> (* decomposition unification literal; decompose and recurse
+                                                                example:  (f a b) = (f c d)
+                                                             *)
+                                let newlits = make_dec_lits st args1 args2
+                                in
+                                  pre_unify' ((newlits @ rest_unilits, flexflexlits, otherlits, subst) ::
+                                                (rest_unilits, flexflexlits, newlits @ otherlits, subst) ::
+                                                rest_tuples) st accu depth true
+                            | ("dec=",hd1,hd2,args1,args2) -> (* decomposition unification literal; decompose and recurse
+                                                                 example:  (= a b) = (= c d)
+                                                              *)
+                                let newlits1 = make_dec_lits st args1 args2 and
+                                    newlits2 = make_dec_lits st (List.rev args1) args2
+                                in
+                                  pre_unify' ((newlits1 @ rest_unilits, flexflexlits, otherlits, subst) ::
+                                                (newlits2 @ rest_unilits, flexflexlits, otherlits, subst) ::
+                                                (* new for BrownSmolk-3.thf *)
+                                                (rest_unilits, flexflexlits, newlits1 @ otherlits, subst) ::
+                                                (* new for BrownSmolk-3.thf *)
+                                                (rest_unilits, flexflexlits, newlits2 @ otherlits, subst) ::
+                                                rest_tuples) st accu depth true
+                            | ("dec+bool",t1,t2,args1,args2) -> (* decomposition unification literal; decompose,
+                                                                   apply Boolean extensionality and recurse
+                                                                   example:  (f a b) = (f c d)
+                                                                *)
+                                let newlits = make_dec_lits st args1 args2 in
+                                let (newlits1,newlits2) = bool_ext st t1 t2 lit.lit_info
+                                in
+                                  pre_unify'  ((rest_unilits, flexflexlits, newlits1 @ otherlits, subst) ::
+                                                 (rest_unilits, flexflexlits, newlits2 @ otherlits, subst) ::
+                                                 (newlits @ rest_unilits, flexflexlits, otherlits, subst) ::
+                                                 (* new for BrownSmolk-3.thf *)
+                                                 (rest_unilits, flexflexlits, newlits @ otherlits, subst) ::
+                                                 rest_tuples) st accu depth true
+                            | ("bool",t1,t2,[],[]) -> (* Boolean unification literal;
+                                                         apply Boolean extensionality and recurse
+                                                         example:  (or a b) = (f c d)
+                                                      *)
+                                let (newlits1,newlits2) = bool_ext st t1 t2 lit.lit_info
+                                in
+                                  pre_unify'  ((rest_unilits, flexflexlits, newlits1 @ otherlits, subst) ::
+                                                 (rest_unilits, flexflexlits, newlits2 @ otherlits, subst) ::
+                                                 rest_tuples) st accu depth true
+                            | ("flexrigid",t1,t2,_,_) -> (* flexrigid unification literal;
+                                                            determine bindings and recurse with increased depth
+                                                            example: (H a) = (g b)
+                                                         *)
+                                let bindingpairs = flexrigid_binding_pairs (xterm2term t1) (xterm2term t2) st in
+                                  Util.sysout 3 ("\n Bindingpairs: " ^
+                                                   List.fold_right (fun (v, t) s ->
+                                                                      ("(" ^ to_string v ^ "," ^ to_string t ^ ")," ^ s))
+                                                   bindingpairs "");
+                                  let new_tuples =
+                                    List.map (fun (v, t) ->
+                                                (sub (v, t) st unilits,
+                                                 sub (v, t) st flexflexlits,
+                                                 sub (v, t) st otherlits,
+                                                 subst @ [(v, t)]))
+                                      bindingpairs in
+                                  let tuplestring =
+                                    List.fold_right (fun (ul, ffl, ol, subst) s ->
+                                      "(" ^ lit_litlist_to_protocol ul ^ "," ^ lit_litlist_to_protocol ffl ^
+                                        "," ^ lit_litlist_to_protocol ol ^ ",subst-not-printed)," ^ s) new_tuples ""
+                                  in
+                                    Util.sysout 3 ("\n  new_tuples: " ^ tuplestring);
+                                    pre_unify' (new_tuples @ rest_tuples) st accu (depth + 1) true
+                            | ("flexrigid+bool",t1,t2,_,_) -> (* flexrigid unification literal and terms are of Boolean type;
+                                                                 determine bindings and recurse with increased depth,
+                                                                 but also apply Boolean extensionality
+                                                                 example: (H a) =^{o} (or t1 t2)
+                                                              *)
+                                let bindingpairs = flexrigid_binding_pairs (xterm2term t1) (xterm2term t2) st in
+                                  Util.sysout 3 ("\n Bindingpairs: " ^
+                                                   List.fold_right (fun (v, t) s ->
+                                                                      "(" ^ to_string v ^ "," ^ to_string t ^ ")," ^ s)
+                                                   bindingpairs "");
+                                  let new_tuples =
+                                    List.map (fun (v, t) ->
+                                                (sub (v, t) st unilits,
+                                                 sub (v, t) st flexflexlits,
+                                                 sub (v, t) st otherlits,
+                                                 subst @ [(v, t)]))
+                                      bindingpairs in
+                                  let (newlits1, newlits2) = bool_ext st t1 t2 lit.lit_info
+                                  in
+                                    pre_unify' ((rest_unilits, flexflexlits, newlits1 @ otherlits, subst) ::
+                                                  (rest_unilits, flexflexlits, newlits2 @ otherlits, subst) ::
+                                                  new_tuples @ rest_tuples) st accu (depth + 1) true
+                            | _ -> raise (Failure "Unknown case returned by analyze_unilit")
+                        end
+                end
+    end in
+  let litlist = Array.to_list cl.cl_litarray
   in
-    
-  let litlist = (Array.to_list cl.cl_litarray) in
-    if List.exists (fun l -> is_unilit l) litlist 
-    then pre_unify' [(litlist,[],[],[])] st [] 1 false 
+    if List.exists (fun l -> is_unilit l) litlist then
+      pre_unify' [(litlist, [], [], [])] st [] 1 false
     else [cl]
-      
 
 (*
 let clash (l:role lit_literal) =
@@ -3656,183 +3169,586 @@ let uni_termpairs (l:role lit_literal) =
       Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) -> (l1,l2)
     | _ -> raise (Failure "uni_termpairs")
 
-let switch (l:role lit_literal) =
+let switch st (l:role lit_literal) =
   match (xterm2im l.lit_term 4) with
-      Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) -> lit_mk_uni_literal (im2xterm l2) (im2xterm l1) ""
+      Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) -> lit_mk_uni_literal st.signature (im2xterm l2) (im2xterm l1) l.lit_info
     | _ -> raise (Failure "switch_uni_termpairs")
 
-let rec pre_uni_new'  
-    (unilits: (role lit_literal) list) (flexlits: (role lit_literal) list) (otherlits: (role lit_literal) list)
-    (subst: ((role xterm) * (role xterm)) list) (st:state) (depth: int) (decfuncdepth:int) (flag_ext:bool) = 
-  
+(*Leo2's extensional pre-unification algorithm.
+  It usually starts with the call:
+	  pre_uni_new' litlist [] [] [] st 0 0 st.flags.use_extuni
+  where "litlist" is the list of literals in a clause. These are then
+  classified by pre_uni_new' into unilits, flexflexlits, and otherlits.
+  It produces a list of 5-tuples consisting of flex-flex literals,
+  other literals, substitutions, the number of extuni inferences carried out,
+  and the previous inferred clause.
+  (Substitutions are used to create the "bind" annotations in the proof protocol.)
+  Each resulting tuple becomes a clause.
+  Intuitively, pre_uni_new' could return
+    * an empty list, in which case unification could not drive the proof further.
+    * a singleton list, which is equisatisfiable with the original clause
+    * multiple tuples, each of which is equisatisfiable with the original clause.
+  For instance, apply flexrigid can produce a list of tuples,
+  while triv returns a smaller unilist.
+  All literals are subject to transformation by the substitutions.
+*)
+let rec pre_uni_new'
+    (*All literals are initially placed here.
+      Unification literals are processed. Flexflex
+      literals are transferred to flexlits, and
+      non-unification literals are transferred to
+      otherlits.*)
+    (unilits : role lit_literal list)
+    (*Flex-Flex literals*)
+    (flexlits : role lit_literal list)
+    (*Non-unification literals*)
+    (otherlits : role lit_literal list)
+    (*Accummulated substitutions*)
+    (subst : (role xterm * role xterm) list)
+    (*State*)
+    (st : state)
+    (*"unification depth", which actually measures
+      the number of applications of flex_rigid.*)
+    (depth : int)
+    (*Whether algorithm should operate extensionally*)
+    (flag_ext : bool)
+    (*Number of changes so far*)
+    (changes : int)
+    (*Previous clause in the derivation.*)
+    (cl : cl_clause) =
   State.check_timeout ();
-  let subststring = List.fold_right (fun (v,t) s -> (" "^(to_string v)^"/"^(to_string t)^" "^s)) subst "" in 
-    Util.sysout 3 ("\n pre_uni_new': \n  :unilits: "^(lit_litlist_to_protocol unilits)^"\n  :flexlits: "^(lit_litlist_to_protocol flexlits)^"\n  :otherlits: "^(lit_litlist_to_protocol otherlits)^"\n  :subst: "^subststring^"\n  :depth: "^(string_of_int depth)^"  :rec: "^(string_of_int decfuncdepth)^"  :flag_ext: "^(string_of_bool flag_ext));
-    
+  let subststring = List.fold_right (fun (v, t) s -> (" " ^ to_string v ^ "/" ^ to_string t ^ " " ^ s)) subst "" in
+    Util.sysout 3 ("\n pre_uni_new': \n  :unilits: " ^ lit_litlist_to_protocol unilits ^ "\n  :flexlits: " ^
+                     lit_litlist_to_protocol flexlits ^ "\n  :otherlits: " ^ lit_litlist_to_protocol otherlits ^
+                     "\n  :subst: " ^ subststring ^ "\n  :depth: " ^ string_of_int depth ^
+                     "  :flag_ext: " ^ string_of_bool flag_ext);
+
     if depth >= st.flags.max_uni_depth then []
     else
       match unilits with
-	        [] -> 
-	          begin
-	            match analyze_flexflex_unilits flexlits with
-		              (_,[]) -> (* all flex_flex, we are done *) [(flexlits,otherlits,subst)]
-	              | (ff,notff) -> (* start over with nonflex *) pre_uni_new' notff ff otherlits subst st depth 0 flag_ext
-	          end
-        | lit::restlits ->
-	          if (is_flexflex_unilit lit) then (* move to flexflex *) pre_uni_new' restlits (lit::flexlits) otherlits subst st depth decfuncdepth flag_ext
-	          else
-	            if (not (is_unilit lit)) then (* move to otherlits *) pre_uni_new' restlits flexlits (lit::otherlits) subst st depth decfuncdepth flag_ext
-	            else
-	              let (l,r) = uni_termpairs lit in
-	              let (xl,xr) = ((im2xterm l),(im2xterm r)) in
-		              match (l,r,flag_ext) with
-		                  (Xsymbol(s,ty),_,_) when is_variable xl ->
-		                    if occurs_in st.index xr xl then (* fail *) []
-		                    else (* bind *) 
-			                    pre_uni_new' (sub (xl,xr) st restlits) (sub (xl,xr) st flexlits) (sub (xl,xr) st otherlits) ((xl,xr)::subst) st depth decfuncdepth flag_ext
-		                | (_,Xsymbol(s,ty),_) when is_variable xr -> pre_uni_new' (switch lit::restlits) flexlits otherlits subst st depth decfuncdepth flag_ext 
-		                | (Xsymbol(_,_),Xsymbol(_,_),false) -> (* triv or func *)
-		                    if xl = xr then pre_uni_new' restlits flexlits otherlits subst st depth decfuncdepth flag_ext
-		                    else []
-                          (*Since intensional, should not need to apply rule "ext"
-			                      begin
-                            let xl_ty = type_of xl in
-                            let xl_tr = type_of xr in
-                            IFDEF DEBUG THEN
-                            assert (xl_ty = xl_tr);
-                            END;
-			                      match (xl_ty, xl_tr) with
-			                      (Funtype(_,_),Funtype(_,_)) ->
-				                    let free_vars = litlist_free_vars (unilits@flexlits@otherlits) in
-				                    let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
-				                    pre_uni_new' (newlit::restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext
-			                      | _ -> (* fail *) []
-			                      end
-                          *)
-		                | (Xsymbol(_,_),Xsymbol(_,_),true) -> (* apply bool at type $o, give back the lits if at other base type, otherwise func *)
-		                    if xl = xr then pre_uni_new' restlits flexlits otherlits subst st depth decfuncdepth flag_ext
-		                    else 
-			                    begin
-                            let xl_ty = type_of xl in
-                            let xl_tr = type_of xr in
-                              IFDEF DEBUG THEN
-                                assert (xl_ty = xl_tr);
-                              END;
-			                        match (xl_ty, xl_tr, decfuncdepth) with
-			                            (Funtype(_,_),Funtype(_,_),_) ->
-				                            let free_vars = litlist_free_vars (unilits@flexlits@otherlits) in
-				                            let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
-				                              pre_uni_new' (newlit::restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext
-			                          | (Basetype("$o"),Basetype("$o"),i) when i > 0 ->  
-				                            let (newlits1,newlits2) = bool_ext xl xr in
-				                              (pre_uni_new' restlits flexlits (newlits1@otherlits) subst st depth decfuncdepth flag_ext) 
-				                              @(pre_uni_new' restlits flexlits (newlits2@otherlits) subst st depth decfuncdepth flag_ext)
-			                          | (Basetype(_),Basetype(_),i) when i > 0 ->  
-				                            pre_uni_new' restlits flexlits (lit::otherlits) subst st depth decfuncdepth flag_ext
-			                          | _ -> (* fail *) []
-			                    end
-		                | (Xabstr(_,_,_,_),_,_) 
-		                | (_,Xabstr(_,_,_,_),_) -> (* func *)
-		                    if xl = xr then pre_uni_new' restlits flexlits otherlits subst st depth decfuncdepth flag_ext
-		                    else
-			                    let free_vars = litlist_free_vars (unilits@flexlits@otherlits) in
-			                    let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
-			                      pre_uni_new' (newlit::restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext
-		                | (Xsymbol(_,_),Xappl(_,_,_),_) -> pre_uni_new' (switch lit::restlits) flexlits otherlits subst st depth decfuncdepth flag_ext
-		                | (Xappl(_,_,_),Xsymbol(_,_),false) 		  
-		                | (Xappl(_,_,_),Xappl(_,_,_),false) -> 
-		                    if xl = xr then pre_uni_new' restlits flexlits otherlits subst st depth decfuncdepth flag_ext
-		                    else
-			                    begin
-			                      let hl = (get_head_symbol xl) and hr = (get_head_symbol xr) in
-			                        match (hl = hr,is_variable hl,is_variable hr) with
-				                          (_,true,true) -> (* flex_flex *) pre_uni_new' restlits (lit::flexlits) otherlits subst st depth decfuncdepth flag_ext
-			                          | (true,false,false) -> (* dec *)
-                                    (*Check for cases like the following:
-                                      (a =_i b) =_o (f =_(i>i) g)
-                                      since "=" is polymorphic in Leo2
-                                    *)
-				                            if ((List.map type_of (get_args xl)) = (List.map type_of (get_args xr))) 
-				                            then pre_uni_new' (make_dec_lits (get_args xl) (get_args xr) @restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext
-				                            else (* fail *) []
-			                          | (false,false,true) -> pre_uni_new' (switch lit::restlits) flexlits otherlits subst st depth decfuncdepth flag_ext 
-			                          | (false,true,false) -> (* flex_rigid *)
-				                            List.flatten
-				                              (List.map 
-				                                 (fun s -> pre_uni_new' (sub s st unilits) (sub s st flexlits) (sub s st otherlits) (s::subst) st (depth+1) decfuncdepth flag_ext) 
-                                         (*Here could also look at instantiating with logical constants if the flex literal has boolean value*)
-				                                 (flexrigid_binding_pairs (xterm2term xl) (xterm2term xr) st))
-			                          | _ ->  (* fail *) []
-			                    end
-		                | (Xappl(_,_,_),Xsymbol(_,_),true) 		  
-		                | (Xappl(_,_,_),Xappl(_,_,_),true) -> 
-		                    if xl = xr then pre_uni_new' restlits flexlits otherlits subst st depth decfuncdepth flag_ext
-		                    else
-			                    begin
-			                      let hl = (get_head_symbol xl) and hr = (get_head_symbol xr) in
-			                        match (hl = hr,is_variable hl,is_variable hr,type_of xl,type_of xr,decfuncdepth) with
-				                          (_,true,true,_,_,_) -> (* flex_flex *) pre_uni_new' restlits (lit::flexlits) otherlits subst st depth decfuncdepth flag_ext
-			                          | (true,false,false,Basetype("$o"),Basetype("$o"),i) when i > 0 -> (* dec + apply bool at type $o *)
-				                            begin
-				                              match (xterm2im hl 3,xterm2im hr 3) with 
-				                                | (Xsymbol("|",_),Xsymbol("|",_)) 
-				                                | (Xsymbol("=",_),Xsymbol("=",_)) ->  (* symmetry dec + apply bool at type $o *)
-                                            let (newlits1,newlits2) = bool_ext xl xr in
-                                              if ((List.map type_of (get_args xl)) = (List.map type_of (get_args xr))) then
-					                                      (pre_uni_new' restlits flexlits (newlits1@otherlits) subst st depth decfuncdepth flag_ext)
-					                                      @(pre_uni_new' restlits flexlits (newlits2@otherlits) subst st depth decfuncdepth flag_ext)
-					                                      @(pre_uni_new' (make_dec_lits (get_args xl) (get_args xr) @restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext)
-					                                      @(pre_uni_new' (make_dec_lits (List.rev (get_args xl)) (get_args xr) @restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext)
-                                              else 
-					                                      (pre_uni_new' restlits flexlits (newlits1@otherlits) subst st depth decfuncdepth flag_ext)
-					                                      @(pre_uni_new' restlits flexlits (newlits2@otherlits) subst st depth decfuncdepth flag_ext)
-				                                | _ -> (* normal dec + apply bool at type $o *)
-					                                  let (newlits1,newlits2) = bool_ext xl xr in
-					                                    (pre_uni_new' restlits flexlits (newlits1@otherlits) subst st depth decfuncdepth flag_ext)
-					                                    @(pre_uni_new' restlits flexlits (newlits2@otherlits) subst st depth decfuncdepth flag_ext)
-					                                    @(pre_uni_new' (make_dec_lits (get_args xl) (get_args xr) @restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext)
-				                            end
-			                          | (true,false,false,Basetype(_),Basetype(_),i) when i > 0 -> (* dec + give back the lits if at other base type *)
-                                    if ((List.map type_of (get_args xl)) = (List.map type_of (get_args xr))) then 
-				                              (pre_uni_new' restlits flexlits (lit::otherlits) subst st depth decfuncdepth flag_ext)
-				                              @(pre_uni_new' (make_dec_lits (get_args xl) (get_args xr) @restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext)
-                                    else (* fail *) []
-			                          | (true,false,false,_,_,_) -> (* dec *)
-                                    if ((List.map type_of (get_args xl)) = (List.map type_of (get_args xr))) then 
-				                              pre_uni_new' (make_dec_lits (get_args xl) (get_args xr) @restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext
-                                    else (* fail *) []
-			                          | (false,false,true,_,_,_) -> (* switch *) pre_uni_new' (switch lit::restlits) flexlits otherlits subst st depth decfuncdepth flag_ext 
-			                          | (false,true,false,_,_,_) -> (* flex_rigid *)
-				                            List.flatten
-				                              (List.map 
-				                                 (fun s -> pre_uni_new' (sub s st unilits) (sub s st flexlits) (sub s st otherlits) (s::subst) st (depth+1) decfuncdepth flag_ext) 
-				                                 (flexrigid_binding_pairs (xterm2term xl) (xterm2term xr) st))
-			                          | (false,false,false,Funtype(_,_),Funtype(_,_),_) -> (* func *)
-				                            let free_vars = litlist_free_vars (unilits@flexlits@otherlits) in
-				                            let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
-				                              pre_uni_new' (newlit::restlits) flexlits otherlits subst st depth (decfuncdepth+1) flag_ext
-			                          | (false,false,false,Basetype("$o"),Basetype("$o"),i) when i > 0 ->  (* bool *)
-				                            let (newlits1,newlits2) = bool_ext xl xr in
-				                              (pre_uni_new' restlits flexlits (newlits1@otherlits) subst st depth decfuncdepth flag_ext)
-				                              @(pre_uni_new' restlits flexlits (newlits2@otherlits) subst st depth decfuncdepth flag_ext)
-			                          | (false,false,false,Basetype(_),Basetype(_),i) when i > 0 ->
-				                            pre_uni_new' restlits flexlits (lit::otherlits) subst st depth decfuncdepth flag_ext
-			                          | _ ->  (* fail *) []
-			                    end
-		                | _ ->  raise (Failure "pre_uni_new'")
-		                    
-                        
-let pre_unify_new (cl:cl_clause) (st:state) =
-  let litlist = (Array.to_list cl.cl_litarray) in
-    if List.exists (fun l -> is_unilit l) litlist 
-    then 
-      let result = 
-	List.map 
-	  (fun (flexlits,otherlits,subst) -> create_res_clause flexlits otherlits subst st cl)
-	  (pre_uni_new' litlist [] [] [] st 0 0 st.flags.use_extuni)
+        [] ->
+          begin
+            match analyze_flexflex_unilits flexlits with
+                (_, []) ->
+                  (* all flex_flex, we are done *)
+                  [(flexlits, otherlits, subst, changes, cl)]
+              | (ff, notff) ->
+                  (* start over with nonflex *)
+                  pre_uni_new' notff ff otherlits subst st depth flag_ext changes cl
+          end
+        | lit :: restlits when is_flexflex_unilit lit ->
+            (* move to flexflex *)
+            pre_uni_new' restlits (lit :: flexlits) otherlits subst st depth flag_ext changes cl
+        | lit :: restlits when not (is_unilit lit) ->
+            (* move to otherlits *)
+            pre_uni_new' restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl
+        | lit :: restlits ->
+            (*lit must therefore be a non-flexflex unification literal*)
+            let (l, r) = uni_termpairs lit in
+            let (xl, xr) = (im2xterm l, im2xterm r) in
+            let decFuncProcessed = (lit.lit_info = getFuncOrDecTouched) 
+            in
+              match (l, r, flag_ext) with
+                  (*Note that flex-flex literals have already been handled.
+                    Since "l" is a variable, then this must be a "bind" step*)
+                  (Xsymbol (s, ty), _, _) when is_variable xl ->
+                    if occurs_in st.index xr xl then []
+                    else
+                      (* bind *)
+                      let unilits' = sub (xl, xr) st restlits in
+                      let flexlits' = sub (xl, xr) st flexlits in
+                      let otherlits' = sub (xl, xr) st otherlits in
+                      let subst' = (xl, xr) :: subst in
+                        (*should unilits' be given in separate argument below?*)  
+                      let cl' = create_intermediate_uni_step "_bind" flexlits' (otherlits' @ unilits') subst' st cl
+                      in
+                        pre_uni_new' unilits' flexlits' otherlits' subst' st depth flag_ext (changes + 1) cl'
+                | (_, Xsymbol (s, ty), _) when is_variable xr ->
+                    (*Reorienting equalities isn't tracked*)
+                    pre_uni_new' (switch st lit :: restlits) flexlits otherlits subst st depth flag_ext changes cl
+                | (Xsymbol _, Xsymbol _, false) ->
+                    (*Note that neithr "l" nor "r" is a variable, since they would have been picked up
+                      by the previous two rules.
+                      Therefore here we're dealing with either triv or func steps.*)
+                    if xl = xr then
+                      let cl' = create_intermediate_uni_step "_triv" flexlits (otherlits @ restlits) subst st cl
+                      in
+                        pre_uni_new' restlits flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                    else [] 
+                | (Xsymbol _, Xsymbol _, true) ->
+                    (* Both l and r are constants, since otherwise would have been picked up at the
+                       flexflex stage.
+                       apply bool at type $o, give back the lits if at other base type, otherwise func *)
+                    if xl = xr then
+                      let cl' = create_intermediate_uni_step "_triv" flexlits (otherlits @ restlits) subst st cl
+                      in
+                        pre_uni_new' restlits flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                    else
+                      begin
+                        let xl_ty = type_of xl in
+                        let xr_ty = type_of xr in
+                          IFDEF DEBUG THEN
+                            assert (xl_ty = xr_ty);
+                          END;
+                          match (xl_ty, xr_ty, decFuncProcessed) with
+                              (Funtype _, Funtype _, _) ->
+                                let free_vars = litlist_free_vars (unilits @ flexlits @ otherlits) in
+                                let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
+                                let cl' = create_intermediate_uni_step "_func" flexlits (otherlits @ newlit :: restlits) subst st cl
+                                in
+                                  pre_uni_new' (newlit :: restlits) flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+(*FIXME in line below, why "i > 0"? what's special about "i = 0"?
+        i=0 means that "dec" has not been applied yet. but this is rather
+        arbitrary, since reordering the literals in the clause can give
+        different result.
+        e.g. in [(f a =?= g b); (c =?= d)], i=1 when we come to process "c =?= d",
+        but in [(c =?= d); (f a =?= g b)] i=0 when we come to process "c =?= d".*)  
+                            | (Basetype "$o", Basetype "$o",true) ->
+                                let (newlits1, newlits2) = bool_ext st xl xr lit.lit_info in
+                                let cl1 = create_intermediate_uni_step "_bool1" flexlits (otherlits @ newlits1 @ restlits) subst st cl in
+                                let cl2 = create_intermediate_uni_step "_bool2" flexlits (otherlits @ newlits2 @ restlits) subst st cl
+                                in
+                                  pre_uni_new' restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) cl1 @
+                                    pre_uni_new' restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) cl2
+                            | (Basetype _, Basetype _,true) ->
+                                (*e.g., (a : $i) = b*)
+                                pre_uni_new' restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl
+                            | _ -> [] (* fail *)
+                                (* assert false (*type must have been different -- this is not possible*) *)
+                      end
+                | (Xabstr _, _, _)
+                | (_, Xabstr _, _) ->
+                    (* func *)
+                    if xl = xr then
+                      let cl' = create_intermediate_uni_step "_triv" flexlits (otherlits @ restlits) subst st cl
+                      in
+                        pre_uni_new' restlits flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                    else
+                      let free_vars = litlist_free_vars (unilits @ flexlits @ otherlits) in
+                      let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
+                      let cl' = create_intermediate_uni_step "_func" flexlits (otherlits @ newlit :: restlits) subst st cl
+                      in
+                        pre_uni_new' (newlit :: restlits) flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                | (Xsymbol _, Xappl _, _) ->
+                    pre_uni_new' (switch st lit :: restlits) flexlits otherlits subst st depth flag_ext changes cl
+                | (Xappl _, Xsymbol _, false)
+                | (Xappl _, Xappl _, false) ->
+                    if xl = xr then
+                      let cl' = create_intermediate_uni_step "_triv" flexlits (otherlits @ restlits) subst st cl
+                      in
+                        pre_uni_new' restlits flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                    else
+                      begin
+                        let hl = get_head_symbol xl
+                        and hr = get_head_symbol xr
+                        in
+                          match (hl = hr, is_variable hl, is_variable hr) with
+                              (_, true, true) ->
+                                (* flex_flex *)
+                                assert false (*this should never be called, since flexflex literals should have already been handled*)
+                            | (true, false, false) ->
+                                (* dec *)
+                                (*Check for cases like the following:
+                                  (a =_i b) =_o (f =_(i>i) g)
+                                  since "=" is polymorphic in Leo2.
+                                  i.e, just checking "hl = hr" could be misleading unless we also check their types.
+                                *)
+                                if (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) then
+                                  (*Since flag_ext=false we treat "=" as an uninterpreted constant, and decompose.*)
+                                  let newlits = make_dec_lits st (get_args xl) (get_args xr) in
+                                  let cl' = create_intermediate_uni_step "_dec" flexlits (otherlits @ newlits @ restlits) subst st cl
+                                  in
+                                    pre_uni_new' (newlits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                                else (* fail *) [] 
+                            | (false, false, true) ->
+                                (* rigid_flex *)
+                                pre_uni_new' (switch st lit :: restlits) flexlits otherlits subst st depth flag_ext changes cl
+                            | (false, true, false) ->
+                                (* flex_rigid *)
+                                List.flatten
+                                  (List.map
+                                     (fun s ->
+                                        let unilits' = sub s st unilits (*This must be unilits, not restlits*) in
+                                        let flexlits' = sub s st flexlits in
+                                        let otherlits' = sub s st otherlits in
+                                        let subst' = s :: subst in
+                                        let cl' = create_intermediate_uni_step "_flex_rigid" flexlits' (otherlits' @ unilits') subst' st cl
+                                        in
+                                          pre_uni_new' unilits' flexlits' otherlits' subst' st (depth + 1) flag_ext (changes + 1) cl')
+                                     (*Here could also look at instantiating with logical constants
+                                       if the flex literal has boolean value.
+                                       I think something similar is done in the primsubst code.*)
+                                     (flexrigid_binding_pairs (xterm2term xl) (xterm2term xr) st))
+                            | (false, false, false) -> [] 
+(*
+In literal structure would be useful to have a flag to cache the literal's "status", to
+avoid redoing the computation related to classifying a literal.
+*)
+                            | (true, false, true)
+                            | (true, true, false) ->
+                                (*these cases don't make sense, so complain*)
+                                assert false
+                      end
+                | (Xappl _, Xsymbol _, true)
+                | (Xappl _, Xappl _, true) ->
+                    if xl = xr then
+                      let cl' = create_intermediate_uni_step "_triv" flexlits (otherlits @ restlits) subst st cl
+                      in
+                        pre_uni_new' restlits flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                    else
+                      begin
+                        let hl = get_head_symbol xl
+                        and hr = get_head_symbol xr
+                        in
+                          match (hl = hr, is_variable hl, is_variable hr, type_of xl, type_of xr, decFuncProcessed) with
+                              (_, true, true, _, _, _) ->
+                                (* flex_flex *)
+                                assert false (*this should never be called, since flexflex literals should have already been handled*)
+                            | (true, false, false, Basetype "$o", Basetype "$o",true) ->
+                                (* dec + apply bool at type $o *)
+                                begin
+                                  match (xterm2im hl 3, xterm2im hr 3) with
+                                    | (Xsymbol ("|", _), Xsymbol ("|", _))
+                                    | (Xsymbol ("=", _), Xsymbol ("=", _)) ->
+                                        (* symmetry dec + apply bool at type $o *)
+                                        let (newlits1, newlits2) = bool_ext st xl xr getFuncOrDecTouched in
+                                        let bool_cl1 = create_intermediate_uni_step "_bool1" flexlits (otherlits @ newlits1 @ restlits) subst st cl in
+                                        let bool_cl2 = create_intermediate_uni_step "_bool2" flexlits (otherlits @ newlits2 @ restlits) subst st cl in
+                                          if (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) then
+                                            (*this is always the case when hl=hr="|"*)
+                                            let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                                            let dec_lits_commuted = make_dec_lits st (List.rev (get_args xl)) (get_args xr) in
+                                            let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                                            let dec_cl2 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits_commuted @ restlits) subst st cl
+                                            in
+                                              pre_uni_new' restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl1 @
+                                                pre_uni_new' restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl2 @
+                                                pre_uni_new' (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1 @
+                                                pre_uni_new' (dec_lits_commuted @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl2
+                                          else
+                                              pre_uni_new' restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl1 @
+                                                pre_uni_new' restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl2
+                                    | _ ->
+                                        (* normal dec + apply bool at type $o *)
+                                        let (newlits1, newlits2) = bool_ext st xl xr lit.lit_info in
+                                        let bool_cl1 = create_intermediate_uni_step "_bool1" flexlits (otherlits @ newlits1 @ restlits) subst st cl in
+                                        let bool_cl2 = create_intermediate_uni_step "_bool2" flexlits (otherlits @ newlits2 @ restlits) subst st cl in
+                                        let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                                        let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                                          pre_uni_new' restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl1 @
+                                            pre_uni_new' restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl2 @
+                                            pre_uni_new' (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1
+                                end
+                            | (true, false, false, Basetype _, Basetype _,true) -> 
+                                (* dec + give back the lits if at other base type *)
+                                begin
+                                  match (xterm2im hl 3, xterm2im hr 3) with
+                                    | (Xsymbol ("=", _), Xsymbol ("=", _)) ->
+                                        (* symmetry dec + apply bool at type $o *)
+                                        if (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) then
+                                          let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                                          let dec_lits_commuted = make_dec_lits st (List.rev (get_args xl)) (get_args xr) in
+                                          let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                                          let dec_cl2 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits_commuted @ restlits) subst st cl
+                                          in
+                                            pre_uni_new' (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1 @
+                                              pre_uni_new' restlits flexlits (dec_lits_commuted @ otherlits) subst st depth flag_ext (changes + 1) dec_cl2 @
+                                              pre_uni_new' (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1 @
+                                              pre_uni_new' restlits flexlits (dec_lits_commuted @ otherlits) subst st depth flag_ext (changes + 1) dec_cl2
+                                        else []
+                                   | _ ->
+                                        let l_arg_types = List.map type_of (get_args xl)
+                                        in
+                                          if l_arg_types = (List.map type_of (get_args xr)) then
+                                            if List.length l_arg_types = 0 then
+                                              pre_uni_new' restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl
+                                            else
+                                              let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                                              let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl
+                                              in
+                                                pre_uni_new' restlits flexlits (lit :: otherlits) subst st depth flag_ext (changes + 1) cl @
+                                                  pre_uni_new' (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1
+                                                  (*
+                                                  (*FIXME interesting example: move unilit to otherlits, and leave decfuncdepth unchanged there*)  
+                                                    pre_uni_new' restlits flexlits (lit :: otherlits) subst st depth decfuncdepth flag_ext @
+                                                    pre_uni_new' (make_dec_lits (get_args xl) (get_args xr) @ restlits) flexlits otherlits subst st depth (decfuncdepth + 1) flag_ext
+                                                  *)
+                                                  (* else (\* fail *\) [] *)
+                                          else
+                                            (*This case is nonsensical, since would have cases like
+                                              g X Y =?= g Z
+                                              or
+                                              g X =?= g Z
+                                              where X and Z are typed differently.
+                                              This suggests a type error somewhere.
+                                              Note that such cases might arise with quantifiers,
+                                              e.g. (! x : 'a. P a) =?= (! x : 'b. Q b), but these
+                                              are handled separately above since the overall type is $o.
+                                            *)
+                                            assert false
+                                end
+                            | (true, false, false, _, _, _) ->
+                                (* dec *)
+                                if (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) then
+                                  let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                                  let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl
+                                  in
+                                    pre_uni_new' (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1
+                                else (* fail *) []
+                            | (false, false, true, _, _, _) ->
+                                (* switch *)
+                                pre_uni_new' (switch st lit :: restlits) flexlits otherlits subst st depth flag_ext changes cl
+                            | (false, true, false, _, _, _) ->
+                                (* flex_rigid *)
+                                List.flatten
+                                  (List.map
+                                     (fun s ->
+                                        let unilits' = sub s st unilits (*This must be unilits, not restlits*) in
+                                        let flexlits' = sub s st flexlits in
+                                        let otherlits' = sub s st otherlits in
+                                        let subst' = s :: subst in
+                                        let cl' = create_intermediate_uni_step "_flex_rigid" flexlits' (otherlits' @ unilits') subst' st cl
+                                        in
+                                          pre_uni_new' unilits' flexlits' otherlits' subst' st (depth + 1) flag_ext (changes + 1) cl')
+                                     (flexrigid_binding_pairs (xterm2term xl) (xterm2term xr) st))
+                            | (false, false, false, Funtype _, Funtype _, _) ->
+                                (*"false, false, false" means we have a problem of form
+                                  cA H1 ... Hn =?= cB J1 ... Jm
+                                *)
+                                (* func *)
+                                let free_vars = litlist_free_vars (unilits @ flexlits @ otherlits) in
+                                let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
+                                let cl' = create_intermediate_uni_step "_func" flexlits (otherlits @ newlit :: restlits) subst st cl
+                                in
+                                  pre_uni_new' (newlit :: restlits) flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                            | (false, false, false, Basetype "$o", Basetype "$o",true)   ->
+                                (* bool *)
+                                let (newlits1, newlits2) = bool_ext st xl xr lit.lit_info in
+                                let bool_cl1 = create_intermediate_uni_step "_bool1" flexlits (otherlits @ newlits1 @ restlits) subst st cl in
+                                let bool_cl2 = create_intermediate_uni_step "_bool2" flexlits (otherlits @ newlits2 @ restlits) subst st cl
+                                in
+                                  pre_uni_new' restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl1 @
+                                    pre_uni_new' restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl2 @
+                                    pre_uni_new' (newlits1 @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) bool_cl1 @
+                                    pre_uni_new' (newlits2 @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) bool_cl2
+                            | (false, false, false, Basetype _, Basetype _,true) ->
+                                pre_uni_new' restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl
+(*FIXME raise exception if types differ? *)  
+
+                            | _ ->  (* fail *) [] 
+                            (* | _ ->  assert false (*which cases are remaining?*)   *)
+                      end
+                | _ ->  raise (Failure "pre_uni_new'")
+
+
+
+let rec pre_uni_new2
+    (*All literals are initially placed here.
+      Unification literals are processed. Flexflex
+      literals are transferred to flexlits, and
+      non-unification literals are transferred to
+      otherlits.*)
+    (unilits : role lit_literal list)
+    (*Flex-Flex literals*)
+    (flexlits : role lit_literal list)
+    (*Non-unification literals*)
+    (otherlits : role lit_literal list)
+    (*Accummulated substitutions*)
+    (subst : (role xterm * role xterm) list)
+    (*State*)
+    (st : state)
+    (*"unification depth", which actually measures
+      the number of applications of flex_rigid.*)
+    (depth : int)
+    (*Whether algorithm should operate extensionally*)
+    (flag_ext : bool)
+    (*Number of changes so far*)
+    (changes : int)
+    (*Previous clause in the derivation.*)
+    (cl : cl_clause) =
+  State.check_timeout ();
+  let subststring = List.fold_right (fun (v, t) s -> (" " ^ to_string v ^ "/" ^ to_string t ^ " " ^ s)) subst "" in
+    Util.sysout 3 ("\n pre_uni_new2: \n  :unilits: " ^ lit_litlist_to_protocol unilits ^ "\n  :flexlits: " ^
+                     lit_litlist_to_protocol flexlits ^ "\n  :otherlits: " ^ lit_litlist_to_protocol otherlits ^
+                     "\n  :subst: " ^ subststring ^ "\n  :depth: " ^ string_of_int depth ^
+                     "  :flag_ext: " ^ string_of_bool flag_ext);
+
+    if depth >= st.flags.max_uni_depth then []
+    else
+      match unilits with
+          [] ->
+            begin
+              match analyze_flexflex_unilits flexlits with
+                  (_, []) ->
+                    (* all flex_flex, we are done *)
+                    [(flexlits, otherlits, subst, changes, cl)]
+                | (ff, notff) ->
+                    (* start over with nonflex *)
+                    pre_uni_new2 notff ff otherlits subst st depth flag_ext changes cl
+            end
+        | lit :: restlits when not (is_unilit lit) ->
+            (* move to otherlits *)
+            pre_uni_new2 restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl
+        | lit :: restlits ->
+            (*lit must therefore be a non-flexflex unification literal*)
+            let (l, r) = uni_termpairs lit in
+            let (xl, xr) = (im2xterm l, im2xterm r) in
+            let xl_ty = type_of xl in
+            let xr_ty = type_of xr in
+            let hl = get_head_symbol xl in
+            let hr = get_head_symbol xr in
+            let decFuncProcessed = (lit.lit_info = getFuncOrDecTouched) 
+            in
+              assert (xl_ty = xr_ty);
+              match (l, r, xl_ty, flag_ext, decFuncProcessed) with
+                  (_, _, _, _, _) when xl = xr -> (* triv *)
+                    let cl' = create_intermediate_uni_step "_triv" flexlits (otherlits @ restlits) subst st cl
+                    in 
+                      pre_uni_new2 restlits flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                | (Xsymbol (s, ty), _, _, _, _) when is_variable xl -> (* bind *)
+                    if occurs_in st.index xr xl then []
+                    else
+                      let unilits' = sub (xl, xr) st restlits in
+                      let flexlits' = sub (xl, xr) st flexlits in
+                      let otherlits' = sub (xl, xr) st otherlits in
+                      let subst' = (xl, xr) :: subst in
+                      let cl' = create_intermediate_uni_step "_bind" flexlits' (otherlits' @ unilits') subst' st cl
+                      in
+                        pre_uni_new2 unilits' flexlits' otherlits' subst' st depth flag_ext (changes + 1) cl'
+                | (_, Xsymbol (s, ty), _, _, _) when is_variable xr -> (* switch *)
+                    pre_uni_new2 (switch st lit :: restlits) flexlits otherlits subst st depth flag_ext changes cl
+                | (_, _, Funtype _, _, _) -> (* func *)
+                    let free_vars = litlist_free_vars (unilits @ flexlits @ otherlits) in
+                    let newlit = func_ext (xterm2term xl) (xterm2term xr) st free_vars in
+                    let cl' = create_intermediate_uni_step "_func" flexlits (otherlits @ newlit :: restlits) subst st cl
+                    in
+                      pre_uni_new2 (newlit :: restlits) flexlits otherlits subst st depth flag_ext (changes + 1) cl'
+                | (Xappl _, Xappl _, Basetype _, _, _) when is_variable hl & is_variable hr -> (* flexflex *)
+                    pre_uni_new2 restlits (lit :: flexlits) otherlits subst st depth flag_ext changes cl
+                | (Xappl _, _, Basetype _, _, _) when is_variable hl -> (* flex_rigid *) 
+                    List.flatten
+                      (List.map
+                         (fun s ->
+                            let unilits' = sub s st unilits (*This must be unilits, not restlits*) in
+                            let flexlits' = sub s st flexlits in
+                            let otherlits' = sub s st otherlits in
+                            let subst' = s :: subst in
+                            let cl' = create_intermediate_uni_step "_flex_rigid" flexlits' (otherlits' @ unilits') subst' st cl
+                            in
+                              pre_uni_new2 unilits' flexlits' otherlits' subst' st (depth + 1) flag_ext (changes + 1) cl')
+                         (flexrigid_binding_pairs (xterm2term xl) (xterm2term xr) st))
+                | (Xappl _, Xappl _, Basetype _, false, _)   (* standard dec -- no extensionality returns *)
+                | (Xappl _, Xappl _, Basetype _, true, false) when hl = hr & (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) ->  
+                    (* standard dec -- no extensionality returns *)
+                    begin
+                      match (xterm2im hl 3, xterm2im hr 3) with
+                        | (Xsymbol ("|", _), Xsymbol ("|", _))
+                        | (Xsymbol ("=", _), Xsymbol ("=", _)) when (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) ->
+                            (* symmetry dec *)
+                              let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                              let dec_lits_commuted = make_dec_lits st (List.rev (get_args xl)) (get_args xr) in
+                              let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                              let dec_cl2 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits_commuted @ restlits) subst st cl
+                              in
+                                pre_uni_new2 (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1 @
+                                  pre_uni_new2 (dec_lits_commuted @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl2
+                        | _  when (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) ->  (* normal dec *)
+                            let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                            let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                              pre_uni_new2 (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1
+                    end
+                | (Xappl _, Xappl _, Basetype "$o", true, true) when hl = hr & (List.map type_of (get_args xl)) = (List.map type_of (get_args xr))  ->  
+                    (* dec -- with extensionality returns *)
+                    begin
+                      match (xterm2im hl 3, xterm2im hr 3) with
+                        | (Xsymbol ("|", _), Xsymbol ("|", _))
+                        | (Xsymbol ("=", _), Xsymbol ("=", _)) ->
+                            (* symmetry dec + apply bool at type $o *)
+                            let (newlits1, newlits2) = bool_ext st xl xr getFuncOrDecTouched in
+                            let bool_cl1 = create_intermediate_uni_step "_bool1" flexlits (otherlits @ newlits1 @ restlits) subst st cl in
+                            let bool_cl2 = create_intermediate_uni_step "_bool2" flexlits (otherlits @ newlits2 @ restlits) subst st cl in
+                            let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                            let dec_lits_commuted = make_dec_lits st (List.rev (get_args xl)) (get_args xr) in
+                            let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                            let dec_cl2 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits_commuted @ restlits) subst st cl
+                            in
+                              pre_uni_new2 restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl1 @
+                                pre_uni_new2 restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl2 @
+                                pre_uni_new2 (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1 @
+                                pre_uni_new2 (dec_lits_commuted @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl2
+                        | _ ->  (* normal dec + apply bool at type $o *)
+                            let (newlits1, newlits2) = bool_ext st xl xr lit.lit_info in
+                            let bool_cl1 = create_intermediate_uni_step "_bool1" flexlits (otherlits @ newlits1 @ restlits) subst st cl in
+                            let bool_cl2 = create_intermediate_uni_step "_bool2" flexlits (otherlits @ newlits2 @ restlits) subst st cl in
+                            let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                            let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                              pre_uni_new2 restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl1 @
+                                pre_uni_new2 restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl2 @
+                                pre_uni_new2 (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1
+                    end
+                | (Xappl _, Xappl _, Basetype _, true, true) when hl = hr & (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) ->  
+                    (* dec -- with extensionality returns *)
+                    begin
+                      match (xterm2im hl 3, xterm2im hr 3) with
+                        | (Xsymbol ("=", _), Xsymbol ("=", _)) ->
+                            (* symmetry dec + return *)
+                              let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                              let dec_lits_commuted = make_dec_lits st (List.rev (get_args xl)) (get_args xr) in
+                              let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl in
+                              let dec_cl2 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits_commuted @ restlits) subst st cl
+                              in
+                                pre_uni_new2 restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl @
+                                  pre_uni_new2 (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1 @
+                                  pre_uni_new2 (dec_lits_commuted @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl2
+                        | _ ->  (* normal dec + return *)
+                            if (List.map type_of (get_args xl)) = (List.map type_of (get_args xr)) then
+                              let dec_lits = make_dec_lits st (get_args xl) (get_args xr) in
+                              let dec_cl1 = create_intermediate_uni_step "_dec" flexlits (otherlits @ dec_lits @ restlits) subst st cl 
+                              in
+                                pre_uni_new2 restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl @
+                                  pre_uni_new2 (dec_lits @ restlits) flexlits otherlits subst st depth flag_ext (changes + 1) dec_cl1 
+                            else
+                              pre_uni_new2 restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl 
+ 
+                    end
+                | (_, _, Basetype "$o", true, true) -> (* apply bool *)
+                    let (newlits1, newlits2) = bool_ext st xl xr lit.lit_info in
+                    let bool_cl1 = create_intermediate_uni_step "_bool1" flexlits (otherlits @ newlits1 @ restlits) subst st cl in
+                    let bool_cl2 = create_intermediate_uni_step "_bool2" flexlits (otherlits @ newlits2 @ restlits) subst st cl in
+                      pre_uni_new2 restlits flexlits (newlits1 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl1 @
+                        pre_uni_new2 restlits flexlits (newlits2 @ otherlits) subst st depth flag_ext (changes + 1) bool_cl2 
+                | (_, _, Basetype _, true, true) -> (* return ext *)
+                    pre_uni_new2 restlits flexlits (lit :: otherlits) subst st depth flag_ext changes cl 
+                | _ -> []
+
+
+
+
+(*Wrapper for Leo2's extensional pre-unification algorithm. It defines the algorithm
+  internally, and only uses the algorithm if there is a unification literal in "cl";
+  otherwise it returns "cl".*)
+let pre_unify_new (cl : cl_clause) (st : state) =
+  let litlist = Array.to_list cl.cl_litarray
+  in
+    if List.exists (fun l -> is_unilit l) litlist then
+      let result =
+        List.fold_right
+          (fun (flexflexlits, otherlits, subst, changes, cl') -> fun cls ->
+             if changes > 0 then
+               let concluding_clause =
+                 if st.flags.expand_extuni then
+                   cl'
+                 else
+                   create_res_clause "" flexflexlits otherlits subst st cl
+               in
+                 concluding_clause :: cls
+             else cls)
+          (pre_uni_new2 litlist [] [] [] st 0 st.flags.use_extuni 0 cl)
+          []
       in
-	Util.sysout 3 ("\n\ pre_uni_nonext: "^(cl_clause_to_protocol cl)^"  pre_uni_nonext_result: "^(cl_clauselist_to_protocol result)^"\n");
-	result 
+	      Util.sysout 3 ("\n\ pre_uni: " ^ cl_clause_to_protocol cl ^
+                         "  pre_uni_result: " ^ cl_clauselist_to_protocol result ^ "\n");
+	      result
     else [cl]
 
 
@@ -4393,8 +4309,8 @@ let detect_choice (cl:cl_clause) (st:state) =
 	      match Term.type_of (type_of_symbol st.signature) hd with
 	          Funtype(Funtype(Basetype("$o"),Basetype("$o")),Basetype("$o")) ->
                     let var = create_and_insert_new_free_var (Symbol "X") (Basetype("$o")) st in
-		    let lit1 = lit_mk_pos_literal (term2xterm (Appl(hd,(Abstr(var,Basetype("$o"),var))))) in
-		    let lit2 = lit_mk_neg_literal (term2xterm (Appl(hd,(Abstr(var,Basetype("$o"),Appl(Symbol "~",var)))))) in
+		    let lit1 = lit_mk_pos_literal st.signature (term2xterm (Appl(hd,(Abstr(var,Basetype("$o"),var))))) in
+		    let lit2 = lit_mk_neg_literal st.signature (term2xterm (Appl(hd,(Abstr(var,Basetype("$o"),Appl(Symbol "~",var)))))) in
                       [
 		       mk_clause [lit1] (inc_clause_count st) [] ("choiceBool",[(cl.cl_number,"")],"") cl.cl_origin st;
 		       mk_clause [lit2] (inc_clause_count st) [] ("choiceBool",[(cl.cl_number,"")],"") cl.cl_origin st
@@ -4507,7 +4423,7 @@ let detect_choice_terms (cl:cl_clause) (st:state) =
            let _ = Util.sysout 3 "\n termcapturedvars: "; List.iter (fun x -> (Util.sysout 3 ((Term.to_string x)^" "))) termcapturedvars in
 	   let var = create_and_insert_new_free_var_with_simple_name ty st in
            let choiceAxInst = (Appl(Appl(Symbol("|"),(Appl(Symbol("~"),(Appl(Symbol("~"),(Appl(Symbol("!"),(Abstr(var,ty,(Appl(Symbol("~"),(Appl(term,var))))))))))))),(Appl(term,(Appl(choice,term)))))) in
-           let lit1 = (lit_mk_pos_literal (term2xterm (beta_normalize choiceAxInst))) in 
+           let lit1 = (lit_mk_pos_literal st.signature (term2xterm (beta_normalize choiceAxInst))) in 
 		 match (termcapturedvars,(hd = choice))  with
                      ([],true) ->  let cl2new = rename_free_variables (mk_clause [lit1] (inc_clause_count st) termrealfreevars ("choice",[(cl.cl_number,"")],"") cl.cl_origin st) st in
                                      [cl;cl2new]

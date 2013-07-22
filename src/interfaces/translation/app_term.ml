@@ -267,7 +267,11 @@ let rec term_to_appterm ((tr, _)  as cfg : Translation_general.configuration) no
                           if tr = Experiment then
                             dummy_type
                           else
-                            Termsystem.type_of (Termsystem.term2xterm (Symbol s))
+                            let s' =
+                              (* Counter the renaming done by offset_constnames *)
+                              if List.mem s (special_symbols @ proxies @ Signature.interpreted_constants) then s
+                              else String.sub s 1 (String.length s - 1)
+                            in Termsystem.type_of (Termsystem.term2xterm (Symbol s'))
                         with
                             e ->
                               (*TRANSLATION isn't caught further up, so we're guaranteed that

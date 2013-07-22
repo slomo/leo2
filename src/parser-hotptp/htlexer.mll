@@ -67,6 +67,7 @@ rule token = parse
   | "!!"   { DOUBLEEXCLAMATION }
   | '!'    { EXCLAMATION }
   | "fof"  { FOF }
+  | "qmf"  { QMF }
   | ":="   { GETS }
   | '>'    { GREATER }
   | "hof"  { HOF }
@@ -100,6 +101,8 @@ rule token = parse
   | ']'    { RBRKT }
   | ')'    { RPAREN }
   | '~'    { TILDE }
+  | "#box" { BOX }
+  | "#dia" { DIAMOND }
   | "$false"    { TOK_FALSE }
   | "$i"    { TOK_I }
   | "$o"    { TOK_O }

@@ -66,22 +66,30 @@ let compute_strategies global_conf filename : string list list =
 		            "flag-prim-subst 0";
 		            "flag-max-uni-depth 1";
 		            "flag-use-extuni"; (* sets it to false *)
-		            "flag-unfold-defs-early false";
+		            "flag-unfold-defs-early false" (* sets it to false *);
 		            "read-problem-file " ^ filename;
 		            "prove-with-fo-atp " ^ global_conf.foatp]] @
 	            [["flag-relevance-filter 2";
 		            "flag-replace-andrewsEQ"; (* sets it to false *)
 		            "flag-replace-leibnizEQ"; (* sets it to false *)
-		            "flag-unfold-defs-early"; (* sets it to false *)
+		            "flag-unfold-defs-early"; (* sets it to true *)
+                "flag-use-extuni"; (* sets it to true *)
+		            "flag-prim-subst 0";
+		            "flag-max-uni-depth 1";
+		            "read-problem-file " ^ filename;
+		            "prove-with-fo-atp " ^ global_conf.foatp]] @
+              [["flag-relevance-filter -1";
+                "flag-replace-andrewsEQ"; (* sets it to true *)
+		            "flag-replace-leibnizEQ"; (* sets it to true *)
 		            "flag-prim-subst 0";
 		            "flag-max-uni-depth 1";
 		            "read-problem-file " ^ filename;
 		            "prove-with-fo-atp " ^ global_conf.foatp]]
 	      | (_,_,ax,defs,false) when ax <= 100 & defs > 1000 -> 
-	          [["flag-unfold-defs-early"; (* sets it to false *)
-	            "read-problem-file " ^ filename;
+	          [["flag-unfold-defs-early"; (* sets it to true *)
+		    "read-problem-file " ^ filename;
 	            "prove-with-fo-atp " ^ global_conf.foatp]] @
-	            [["flag-unfold-defs-early"; (* sets it to true again *)
+	            [["flag-unfold-defs-early"; (* sets it to false *)
 		            "flag-max-uni-depth 3";
 		            "read-problem-file " ^ filename;
 		            "prove-with-fo-atp " ^ global_conf.foatp]] @
@@ -102,7 +110,7 @@ let compute_strategies global_conf filename : string list list =
 	            "read-problem-file " ^ filename;
 	            "prove-with-fo-atp " ^ global_conf.foatp]] @
 	            [["flag-unfold-defs-early"; (* sets it to false *)
-		            "flag-prim-subst 0";
+		            "flag-prim-subst 2";
 		            "flag-max-uni-depth 1";
 		            "read-problem-file " ^ filename;
 		            "prove-with-fo-atp " ^ global_conf.foatp]] @

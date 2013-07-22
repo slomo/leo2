@@ -18,8 +18,9 @@ let rev = ""
 END
 
 let version () =
-  print_endline ("LEO-II version v1.5.0 " ^ rev ^ " \
-  (compiled on " ^ Sys.os_type ^ " with OCaml-" ^ Sys.ocaml_version ^ ")")
+  print_endline ("LEO-II version v1.6.1 " ^ rev ^ " \
+  (compiled on " ^ Sys.os_type ^ " with OCaml-" ^ Sys.ocaml_version ^ ")");
+  if State.state_initialize.flags.verbose then Automation.atp_versions ()
 
 type arg =
   | FILENAME of string (*name of file to process*)
@@ -29,6 +30,7 @@ type arg =
   | ATPTIMEOUT of int
   | DEBUG of int
   | DIR of string
+  | EXPAND_EXTUNI
   | FOATP of string
   | HELP
   | INTERACTIVE
@@ -42,6 +44,7 @@ type arg =
   | NOTREPLACEANDREWSEQ
   | NOTUSECHOICE
   | NOTUSEEXTUNI
+  | NOTUSE_EXTCNFCOMBINED
   | SCRIPTMODE
   | SOS
   | TIMEOUT of int
@@ -66,6 +69,7 @@ let help () = print_string ("\
                                 (0 = no output, 1 = minimal output, 2 = full output)\n \
                                 Default: 0\n \
      --dir DIR, -d DIR          Run on all files in DIR\n \
+     --expand_extuni            Provide detailed unification inferences. \n \
      --foatp PROVER, -f PROVER  Select PROVER as first-order prover\n\tCurrently supported: " ^
                               String.concat ", " Automation.supported_atps ^ "\n\tDefault: " ^ global_conf.foatp ^ "\n \
      --help, -h                 Display this help screen and exit\n \
@@ -85,6 +89,7 @@ let help () = print_string ("\
      --notReplAndrewsEQ, -nraeq Do not automatically replace Andrews EQ literals in clauses \n \
      --notUseChoice,     -nuc   Do not use the choice rule \n \
      --notUseExtuni,     -nue   Do not use extensional unification \n \
+     --notUseExtCnfCmbd, -nux   Do not use the extcnf_combined rule \n \
      --order ORDERING           Use ORDERING\n\tAvailable options: " ^
                                 String.concat ", " (List.map Orderings.ordering_to_string Orderings.available_orderings) ^ "\n \
      --scriptmode, -s           Start script mode\n \
@@ -138,6 +143,8 @@ let rec parse_cl cs ps =
     | "-d" :: xs
     | "--dir" :: xs ->
         parse_cl (tl xs) (DIR (get_cl_string (hd cs) xs) :: ps)
+    | "--expand_extuni" :: xs ->
+        parse_cl xs (EXPAND_EXTUNI :: ps)
     | "-f" :: xs
     | "--foatp" :: xs ->
         parse_cl (tl xs) (FOATP (String.lowercase (get_cl_string (hd cs) xs)) :: ps)
@@ -174,6 +181,9 @@ let rec parse_cl cs ps =
     | "-nue" :: xs
     | "--notUseExtuni" :: xs ->
         parse_cl xs (NOTUSEEXTUNI :: ps)
+    | "-nux" :: xs
+    | "--notUseExtCnfCmbd" :: xs ->
+        parse_cl xs (NOTUSE_EXTCNFCOMBINED :: ps)
     | "-s" :: xs
     | "--scriptmode" :: xs ->
         parse_cl xs (SCRIPTMODE :: ps)
@@ -398,6 +408,9 @@ let rec process args = match args with
   | DIR s :: args ->
       global_conf.dir <- s;
       process args
+  | EXPAND_EXTUNI :: args ->
+      ignore(State.set_flag_expand_extuni State.state_initialize true);
+      process args
   | FOATP s :: args ->
       global_conf.foatp <- s;
       process args
@@ -438,6 +451,9 @@ let rec process args = match args with
       process args
   | NOTUSEEXTUNI :: args ->
       ignore(State.set_flag_use_extuni State.state_initialize false);
+      process args
+  | NOTUSE_EXTCNFCOMBINED :: args ->
+      ignore(State.set_flag_use_extcnf_combined State.state_initialize false);
       process args
   | SCRIPTMODE :: args ->
       global_conf.interactive <- true;

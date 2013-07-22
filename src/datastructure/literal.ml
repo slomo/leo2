@@ -46,23 +46,25 @@ let lit_polarity l = l.lit_polarity
 let lit_weight l = l.lit_weight
 let lit_info l = l.lit_info
 
-let lit_mk_literal xt b i = 
-  { lit_term = xt;
-    lit_polarity = b; 
-    lit_weight = !(Orderings.weighting_hook) (xterm2term xt);
-    lit_info = i }
+let lit_mk_literal sigma xt b i =
+  IFDEF DEBUG THEN
+    assert ((Term.type_of (Signature.type_of_symbol sigma) (xterm2term xt)) = bt_o);
+  END;
+  {lit_term = xt;
+   lit_polarity = b;
+   lit_weight = !(Orderings.weighting_hook) (xterm2term xt);
+   lit_info = i }
 
-let lit_mk_pos_literal xt =
-  lit_mk_literal xt true ""
-
+let lit_mk_pos_literal sigma xt =
+  lit_mk_literal sigma xt true ""
 
 (*
 let lit_mk_pos_literal_and_index xt idx =
   lit_mk_literal (index idx xt) true ""
 *)
 
-let lit_mk_neg_literal xt =
-  lit_mk_literal xt false ""
+let lit_mk_neg_literal sigma xt =
+  lit_mk_literal sigma xt false ""
 
 (*
 let lit_mk_neg_literal_and_index xt idx =
@@ -73,36 +75,32 @@ let lit_mk_neg_literal_and_index xt idx =
   lit_mk_literal (index idx xt) false "" 
 *)
 
-let lit_mk_uni_literal (t1:'a xterm) (t2:'a xterm) (i:string) =
+let lit_mk_uni_literal sigma (t1 : 'a xterm) (t2 : 'a xterm) (i : string) =
+  let term = (Appl (Appl (Symbol equality, xterm2term t1), xterm2term t2))
+  in lit_mk_literal sigma (term2xterm term) false i
+
+let lit_mk_eq_literal sigma (t1:'a xterm) (t2:'a xterm) (i:string) =
   let term = (Appl(Appl(Symbol equality,(xterm2term t1)),(xterm2term t2))) in
-  lit_mk_literal (term2xterm term) false i
+  lit_mk_literal sigma (term2xterm term) true i
 
-let lit_mk_eq_literal (t1:'a xterm) (t2:'a xterm) (i:string) =
-  let term = (Appl(Appl(Symbol equality,(xterm2term t1)),(xterm2term t2))) in
-  lit_mk_literal (term2xterm term) true i
-
-
-let is_flexflex_unilit (l:'a lit_literal) =
+let is_flexflex_unilit (l : 'a lit_literal) =
   if l.lit_polarity then false
   else
-    match (xterm2im l.lit_term 3) with
-	Xappl(Xappl(Xsymbol("=",_),l1,_),l2,_) -> 
-	  (
-	    let xl1 = (im2xterm l1) 
-	    and xl2 = (im2xterm l2) in
-	    let xhl1 = get_head_symbol xl1 
-	    and xhl2 = get_head_symbol xl2 in
-	      match (l1,l2,(is_variable xhl1),(is_variable xhl2))
-	      with
-		| (Xsymbol(_,_),Xsymbol(_,_),true,true) -> true
-		| (Xsymbol(_,_),Xappl(_,_,_),true,true) -> true 
-		| (Xappl(_,_,_),Xsymbol(_,_),true,true) -> true
-		| (Xappl(_,_,_),Xappl(_,_,_),true,true) -> true
-		| (_,_,_,_) -> false
-	  )
+    match xterm2im l.lit_term 3 with
+        Xappl (Xappl (Xsymbol ("=", _), t1_im, _), t2_im, _) ->
+          begin
+            let t1_x = im2xterm t1_im
+            and t2_x = im2xterm t2_im in
+            let head1_x = get_head_symbol t1_x
+            and head2_x = get_head_symbol t2_x in
+              match (t1_im, t2_im, is_variable head1_x, is_variable head2_x) with
+                | (Xsymbol(_,_), Xsymbol(_,_), true, true) -> true
+                | (Xsymbol(_,_), Xappl(_,_,_), true, true) -> true
+                | (Xappl(_,_,_), Xsymbol(_,_), true, true) -> true
+                | (Xappl(_,_,_), Xappl(_,_,_), true, true) -> true
+                | (_, _, _, _) -> false
+          end
       | _ -> false
-	  
-
 
 let is_unilit (l:'a lit_literal) =
   if l.lit_polarity then false

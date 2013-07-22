@@ -121,11 +121,14 @@ let rec get_head_symbol = function
   | Appl(t1,t2) -> get_head_symbol t1
 
 
-(** pretty printer *)
+(** pretty printer. This is not very sophisticated -- "to_hotptp"*)
 let rec to_string = function
     Symbol s -> s
-  | Appl(t1,t2) -> (add_pars t1)^" "^(add_pars t2)
-  | Abstr(x,ty,t) -> "^ ["^(to_string x)^"]: "^(to_string t)
+  | Appl(Appl(Symbol s,t1),t2)
+     when s = "=" || s = "|" || s = "&" || s = "=>" || s = "<=>" || s = "<=" ->
+      "(" ^ add_pars t1 ^ " = " ^ add_pars t2 ^ ")"
+  | Appl(t1,t2) -> add_pars t1 ^ " " ^ add_pars t2
+  | Abstr(x,ty,t) -> "^ [" ^ to_string x ^ ":" ^ Hol_type.to_string ty ^ "]: "^(to_string t)
 and add_pars t =
   if is_symbol t then to_string t
   else "("^(to_string t)^")"
@@ -302,7 +305,7 @@ let hotptpsymb_critical = function
 	
 
 
-(** conversion in HOTPTP *)
+(** printing to THF *)
 
 let rec to_hotptp = function
     Symbol s -> (
@@ -326,7 +329,7 @@ let rec to_hotptp = function
 					(fun acc (x,ty) -> lstapp acc	(x^":"^(Hol_type.to_hotptp ty)))
 					"" args)^"]: "^(add_pars body)
   | Appl(Symbol ("!!" as c), t')
-  | Appl(Symbol ("??" as c), t') -> c ^ add_pars t'
+  | Appl(Symbol ("??" as c), t') -> c ^ " @ " ^ add_pars t'
   | Abstr(_,_,_) as t ->
 				let (args,body) = de_multi_abstr t in
 				"^["^(List.fold_left

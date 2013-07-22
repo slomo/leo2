@@ -1,13 +1,16 @@
-SHELL:=/bin/bash
-OCAMLC=ocamlc
-OCAMLOPT=ocamlopt
-OCAMLDEP=ocamldep
-OCAMLDOC=ocamldoc
-OCAMLLEX=ocamllex
-OCAMLYACC=ocamlyacc
+SHELL := /bin/bash
+OCAMLC ?= !OCAMLBINDIR!ocamlc
+OCAMLOPT ?= !OCAMLBINDIR!ocamlopt
+OCAMLDEP ?= !OCAMLBINDIR!ocamldep
+OCAMLDOC ?= !OCAMLBINDIR!ocamldoc
+OCAMLLEX ?= !OCAMLBINDIR!ocamllex
+OCAMLYACC ?= !OCAMLBINDIR!ocamlyacc
+OCAMLMKLIB ?= !OCAMLBINDIR!ocamlmklib
+OCAMLMKTOP ?= !OCAMLBINDIR!ocamlmktop
+
 #On benefit of using native camlp4 see
 #  http://mancoosi.org/~abate/two-simple-tips-speed-ocaml-compilation
-CAMLP4O=camlp4o.opt
+CAMLP4O ?= !OCAMLBINDIR!camlp4o.opt
 CXX ?= g++
 
 #Compiler switches, can be individually toggled from the command line invocation of "make".
@@ -221,10 +224,10 @@ all:
 	make clean
 	make allmain
 
-#On need to build this file manually see:
+#On the need to build this file manually see:
 # http://caml.inria.fr/mantis/print_bug_page.php?bug_id=5378
 Camlp4MacroParser.cmxs:
-	ocamlopt -shared -o Camlp4MacroParser.cmxs -I +camlp4/Camlp4Parsers Camlp4MacroParser.cmx
+	$(OCAMLOPT) -shared -o Camlp4MacroParser.cmxs -I +camlp4/Camlp4Parsers Camlp4MacroParser.cmx
 
 opt:
 	make clean
@@ -235,7 +238,7 @@ profile:
 	make opt OPT_P_FLAG=-p
 
 install:
-	@cp ../bin/leo /usr/local/bin//leo 2> /dev/null
+	cp ../bin/leo !BINDIR!leo
 
 # allmain: $(addsuffix .cmo,$(basename $(EXTENSIONS))) $(addprefix $(BINDIR),$(basename $(notdir $(TARGETS)))) doc customtop
 # optmain: $(addsuffix .cmx,$(basename $(EXTENSIONS))) $(addsuffix .opt,$(addprefix $(BINDIR),$(basename $(notdir $(TARGETS)))))
@@ -243,13 +246,13 @@ allmain: $(addprefix $(BINDIR),$(basename $(notdir $(TARGETS)))) #doc customtop
 optmain: $(addsuffix .opt,$(addprefix $(BINDIR),$(basename $(notdir $(TARGETS)))))
 
 customtop: $(MAIN_OBJS) $(addsuffix .cmi,$(basename $(MAIN_OBJS))) $(addsuffix .cmi,$(basename $(MAIN_TARGET))) $(addsuffix .cmo,$(basename $(MAIN_TARGET)))
-	ocamlmktop -o customtop unix.cma str.cma $(MAIN_OBJS) $(addsuffix .cmo,$(basename $(MAIN_TARGET)))
+	$(OCAMLMKTOP) -o customtop unix.cma str.cma $(MAIN_OBJS) $(addsuffix .cmo,$(basename $(MAIN_TARGET)))
 #ocamlmktop -o customtop unix.cma str.cma extunix.cma $(MAIN_OBJS) $(addsuffix .cmo,$(basename $(MAIN_TARGET))) -I $(OCAML_EXTUNIX)
 
 #Minisat interface, from Satallax
 #FIXME compiled files are currently put in source directories, and that pattern is continued here, but it's a bad idea.
 minisatinterfaceLib:  interfaces/minisat/minisatinterface.cmo interfaces/minisat/Ointerface.o
-	ocamlmklib -o interfaces/minisat/minisatinterface ../lib/minisat/core/Solver.o ../lib/minisat/simp/SimpSolver.o interfaces/minisat/Ointerface.o -lstdc++
+	$(OCAMLMKLIB) -o interfaces/minisat/minisatinterface ../lib/minisat/core/Solver.o ../lib/minisat/simp/SimpSolver.o interfaces/minisat/Ointerface.o -lstdc++
 interfaces/minisat/dllminisatinterface.so:
 	make minisatinterfaceLib
 interfaces/minisat/libminisatinterface.a:
@@ -281,6 +284,10 @@ clean:
 	rm -f $(addsuffix .annot,$(basename $(SOURCES) $(TARGETS)))
 	rm -f interfaces/minisat/{dllminisatinterface.so,libminisatinterface.a,Ointerface.o}
 
+cleaner:
+	make clean
+	@rm Camlp4MacroParser.cmxs
+
 cleandoc:
 	rm -f $(addsuffix *.html,$(DOCDIR)) $(addsuffix *.css,$(DOCDIR))
 	rmdir $(DOCDIR)
@@ -294,5 +301,17 @@ doc: customtop
 # .depend: $(addsuffix .cmo,$(basename $(EXTENSIONS)))
 .depend: Camlp4MacroParser.cmxs
 	$(OCAMLDEP) $(INCLUDES) $(PREPROCESS) $(addsuffix *.ml,$(INCLUDEDIRS)) $(addsuffix *.mli,$(INCLUDEDIRS))> .depend
+
+list_versions:
+	@echo "Versions of the OCaml tools used to build LEO-II:"
+	@echo "OCAMLC (currently $(OCAMLC)):"; $(OCAMLC) -vnum
+	@echo "OCAMLOPT (currently $(OCAMLOPT)):"; $(OCAMLOPT) -vnum
+	@echo "OCAMLDEP (currently $(OCAMLDEP)):"; $(OCAMLDEP) -vnum
+	@echo "OCAMLDOC (currently $(OCAMLDOC)):"; $(OCAMLDOC) -vnum
+	@echo "OCAMLLEX (currently $(OCAMLLEX)):"; $(OCAMLLEX) -vnum
+	@echo "OCAMLYACC (currently $(OCAMLYACC)):"; $(OCAMLYACC) -vnum
+	@echo "OCAMLMKLIB (currently $(OCAMLMKLIB)):"; $(OCAMLMKLIB) -vnum
+	@echo "OCAMLMKTOP (currently $(OCAMLMKTOP)):"; $(OCAMLMKTOP) -vnum
+	@echo "CAMLP4O (currently $(CAMLP4O)):"; $(CAMLP4O) -vnum
 
 -include .depend

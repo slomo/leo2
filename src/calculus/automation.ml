@@ -274,6 +274,9 @@ let atp_default_cmds =
    ("spass", "SPASS");
    ("vampire", "vampire")]
 
+let atp_version_parameters =
+  [("e", "--version")]
+
 let atp_config_file =
   ref (try (Sys.getenv "HOME" ^ "/.leoatprc")
        with Not_found -> !Util.tmp_path ^ "/.leoatprc")
@@ -308,6 +311,21 @@ let read_atp_config () =
         Util.sysout 1 ("\n *** Could not open configuration file:" ^ s ^ "\n")
     end
   else Util.sysout 1 "\n *** ATPs already configured.\n"
+
+let atp_versions () =
+  let ask_version (prover_name, prover_path) =
+    try
+      let version_param = List.assoc prover_name atp_version_parameters
+      in
+        Util.sysout 0 (prover_name ^ ": ");
+        ignore(Util.command(prover_path ^ " " ^ version_param));
+    with
+      Not_found ->
+        Util.sysout 0 (prover_name ^
+         ": (Don't know how to get version information)\n")
+  in
+    read_atp_config ();
+    List.iter ask_version !atp_cmds
 
 let read_file name =
   let file = open_in name in

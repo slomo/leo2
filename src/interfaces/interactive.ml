@@ -951,7 +951,8 @@ let problems_solved_subdialog (st:state) =
   Util.sysout 0 "\n********************************";
   Util.sysout 0 "\n*   All subproblems solved!    *";
   Util.sysout 0 "\n********************************\n";
-  if global_conf.interactive then
+  (* if global_conf.interactive then *) 
+  (* when LEO-II is run with proof output, then we want to report the SZS status early, since the construction of the proof object may take some time and we will loose some theorems in a competition *)
     Util.sysout 0 (State.szs_result (Some st))
 
 (** The Problem Not-Solved Subdialog *)
@@ -1044,36 +1045,34 @@ let init_problem termlist sigma termroles (kind,filename) st =
   let named_axioms = ((Hashtbl.find_all termroles "axiom")@(Hashtbl.find_all termroles "assumption")@(Hashtbl.find_all termroles "hypothesis")@(Hashtbl.find_all termroles "lemma")) in
   let named_theorems = ((Hashtbl.find_all termroles "theorem")@(Hashtbl.find_all termroles "conjecture")) in
   let named_negated_conjectures = (Hashtbl.find_all termroles "negated_conjecture") in
-  let axiom_clauses_pre = (List.map (fun (name,term) -> mk_clause [ lit_mk_pos_literal(term2xterm term) ] (inc_clause_count st) [] (("axiom"),[],(kind^"('"^filename^"',"^name^")")) AXIOM st) named_axioms) in
+  let axiom_clauses_pre = (List.map (fun (name,term) -> mk_clause [ lit_mk_pos_literal st.signature (term2xterm term) ] (inc_clause_count st) [] (("axiom"),[],(kind^"('"^filename^"',"^name^")")) AXIOM st) named_axioms) in
   let axiom_clauses = axiom_clauses_pre in
     (* (List.map (fun cl -> mk_clause (Array.to_list cl.cl_litarray) (inc_clause_count st) [] ("copy",[(cl.cl_number,"")],"") AXIOM st) axiom_clauses_pre) in *)
-  let make_conjecture name theorem =
-    let theorem_clause_pre = (mk_clause [ lit_mk_pos_literal (term2xterm theorem) ] (inc_clause_count st) [] ("conjecture",[],(kind^"('"^filename^"',"^name^")")) CONJECTURE st) in
-      mk_clause [ lit_mk_neg_literal (term2xterm theorem) ] (inc_clause_count st) [] ("negate_conjecture",[(theorem_clause_pre.cl_number,"")],"") CONJECTURE st
+  let make_conjecture filename name theorem =
+    let theorem_clause_pre = (mk_clause [ lit_mk_pos_literal st.signature (term2xterm theorem) ] (inc_clause_count st) [] ("conjecture",[],(kind^"('"^filename^"',"^name^")")) CONJECTURE st) in
+      mk_clause [ lit_mk_neg_literal st.signature (term2xterm theorem) ] (inc_clause_count st) [] ("negate_conjecture",[(theorem_clause_pre.cl_number,"")],"") CONJECTURE st
   in
   let make_negated_conjecture name theorem =
-    mk_clause [ lit_mk_pos_literal (term2xterm theorem) ] (inc_clause_count st) [] ("negated_conjecture",[],(kind^"('"^filename^"',"^name^")")) CONJECTURE st
+    mk_clause [ lit_mk_pos_literal st.signature (term2xterm theorem) ] (inc_clause_count st) [] ("negated_conjecture",[],(kind^"('"^filename^"',"^name^")")) CONJECTURE st
   in
   let theorem_clauses =
     if named_theorems = [] && named_axioms = [] then
       begin
         (*there are only definitions in the problem*)
-        set_current_success_status (Some st) Tautology;
+        set_current_success_status (Some st) Unknown;
+        (* Returning Tautology would be wrong here; it is unclear right now whther Satisfibiality should actually be checked also for the definitions *)
         []
       end
     else if named_theorems = [] then
       (* no conjectures given, so check whether axioms are SAT or UNS *)
       begin
         State.global_conf.operating_mode <- State.Unsatisfiable_vs_Satisfiable;
-        [mk_clause [lit_mk_neg_literal (term2xterm (Symbol cfalse))]
-           (inc_clause_count st) []
-           ("conjecture", [], kind^"(no conjecture given, we try to refute the axioms)")
-           CONJECTURE st]
+        [make_conjecture "no conjecture given, we try to refute the axioms" "dummy_conjecture" (Symbol cfalse)]
       end
     else
       begin
         State.global_conf.operating_mode <- Theorem_vs_CounterSatisfiable;
-        List.map (fun (n,t) -> make_conjecture n t) named_theorems
+        List.map (fun (n,t) -> make_conjecture filename n t) named_theorems
       end
   in
   let axiom_clauses_filtered =
@@ -1276,37 +1275,40 @@ let cmd_max_uni_depth (st:state) args =
 (** Split problems **)
 
 let split_problems (st:state) =
-  let rec elim_univ_w_sko st term =
-    Util.sysout 3 ("\n elim_univ_w_sko term : "^(Term.to_hotptp term));
-    match term with 
-	Appl(Symbol "!",Abstr(var,ty,t)) ->  
-	  let skoconst = create_and_insert_skolem_const var ty st in
-	    beta_normalize (Appl(Abstr(var,ty,elim_univ_w_sko st t),skoconst))
-      | t -> t 
+  let elim_quant_w_sko pol st term cl =
+    match term with
+        Abstr (var, ty, _) ->
+          let skoconst = create_and_insert_skolem_const var ty st in
+          let term' = beta_normalize (Appl (term, skoconst)) in
+          let lit_builder =
+            if pol then lit_mk_pos_literal else lit_mk_neg_literal in
+          let cl' =
+            mk_clause
+              [lit_builder st.signature (term2xterm term')]
+              (inc_clause_count st)
+              (cl.cl_free_vars)
+              ("extcnf_forall_neg", [(cl.cl_number, "")], "") CONJECTURE st
+          in (term', cl')
+    | _ -> failwith "'term' is not an abstraction" in
+  let rec elim_quants_w_sko pol st term cl =
+    Util.sysout 3 ("\n elim_quants_w_sko term : " ^ Term.to_hotptp term);
+    match term with
+        Appl (Symbol "?", (Abstr (_, _, _) as term)) when pol ->
+          let (term', cl') = elim_quant_w_sko pol st term cl
+          in elim_quants_w_sko pol st term' cl'
+      | Appl (Symbol "!", (Abstr (_, _, _) as term)) when not pol ->
+          let (term', cl') = elim_quant_w_sko pol st term cl
+          in elim_quants_w_sko pol st term' cl'
+      | _ -> term, cl
   in
-  let rec elim_exi_w_sko st term =
-    Util.sysout 3 ("\n elim_exi_w_sko term : "^(Term.to_hotptp term));
-    match term with 
-	Appl(Symbol "?",Abstr(var,ty,t)) ->  
-	  let skoconst = create_and_insert_skolem_const var ty st in
-	    beta_normalize (Appl(Abstr(var,ty,elim_exi_w_sko st t),skoconst))
-      | t -> t 
-  in 
   let elim_leading_quantifiers_in_conjecture (cl:cl_clause) (st:state) =
-    match (Array.to_list cl.cl_litarray) with
-	[l] ->  
-	  if l.lit_polarity 
-	  then 
-	    let newterm = term2xterm (elim_exi_w_sko st (xterm2term l.lit_term)) in
-	      if newterm = l.lit_term then cl else
-		mk_clause [lit_mk_pos_literal newterm] (inc_clause_count st) 
-		  (cl.cl_free_vars) ("extcnf_forall_neg",[(cl.cl_number,"")],"") CONJECTURE st
-	  else
-	    let newterm = term2xterm (elim_univ_w_sko st (xterm2term l.lit_term)) in
-	      if newterm = l.lit_term then cl else
-		mk_clause [lit_mk_neg_literal newterm] (inc_clause_count st) 
-		  (cl.cl_free_vars) ("extcnf_forall_neg",[(cl.cl_number,"")],"") CONJECTURE st
-      | _ -> raise (Failure "elim_leading_quantifiers_in_conjecture")
+    let cl_l = Array.to_list cl.cl_litarray in
+      if List.length cl_l <> 1 then
+        failwith "elim_leading_quantifiers_in_conjecture"
+      else
+        let l = hd cl_l
+        in
+          snd (elim_quants_w_sko l.lit_polarity st (xterm2term l.lit_term) cl)
   in
   let rec split term =   
     Util.sysout 3 ("\n split term : "^(Term.to_hotptp term));
@@ -1336,7 +1338,7 @@ let split_problems (st:state) =
 		  | [t] -> [cl]
 		  | termlist -> 
 		      let xterms = List.map term2xterm termlist in
-		      let new_lits = List.map lit_mk_neg_literal xterms in
+		      let new_lits = List.map (lit_mk_neg_literal st.signature) xterms in
 			List.map (fun l -> mk_clause [l] (inc_clause_count st) 
 				    (cl.cl_free_vars) ("split_conjecture",[(cl.cl_number,"")],"") cl.cl_origin st)
 			  new_lits
@@ -1372,8 +1374,8 @@ let split_problems (st:state) =
 		  | (newaxiomlist,t) -> 
 		      let axiom_xterms = List.map term2xterm newaxiomlist in
 		      let theorem_xterm = term2xterm t in
-		      let new_axiom_lits = List.map lit_mk_pos_literal axiom_xterms in
-		      let new_theorem_lit = lit_mk_neg_literal theorem_xterm in
+		      let new_axiom_lits = List.map (lit_mk_pos_literal st.signature) axiom_xterms in
+		      let new_theorem_lit = lit_mk_neg_literal st.signature theorem_xterm in
 		      let new_axiom_clauses =
 			List.map (fun l -> mk_clause [l] (inc_clause_count st) 
 				    (cl.cl_free_vars) ("standard_cnf",[(cl.cl_number,"")],"") cl.cl_origin st)
@@ -1396,10 +1398,10 @@ let split_problems (st:state) =
 	    else 
 	      match xterm2term l.lit_term with
 		  Appl(Symbol "~",t) -> 
-		    mk_clause [lit_mk_pos_literal (term2xterm t)] (inc_clause_count st) 
+		    mk_clause [lit_mk_pos_literal st.signature (term2xterm t)] (inc_clause_count st) 
 		      (cl.cl_free_vars) ("polarity_switch",[(cl.cl_number,"")],"") cl.cl_origin st
 		| t -> 
-		    mk_clause [lit_mk_pos_literal (term2xterm (Appl(Symbol "~",t)))] (inc_clause_count st) 
+		    mk_clause [lit_mk_pos_literal st.signature (term2xterm (Appl(Symbol "~",t)))] (inc_clause_count st) 
 		      (cl.cl_free_vars) ("polarity_switch",[(cl.cl_number,"")],"") cl.cl_origin st
 	  )
       | _ -> raise (Failure "polarity_switch")
@@ -1628,7 +1630,7 @@ let prove_with_fo_atp (st : state) (prover : string) =
   in
     if st.flags.unfold_defs_early then unfold_nonlogical_defs_stack st;
     split_problems st;
-    standard_extcnf_stack st;
+    if st.flags.use_extcnf_combined then standard_extcnf_stack st;
     if st.problem_stack = [] then
       Util.sysout 0 "No proof problem given.\n"
     else
@@ -1649,14 +1651,23 @@ let prove_with_fo_atp (st : state) (prover : string) =
           begin
             (*if (not !success) we'll leave the loop, since it's useless trying to continue proof search*)
             while !success && (i := !i + 1; !i) < Array.length problem_array_thf do
-              let clause_count = st.clause_count in
+              let clause_count = st.clause_count 
+              and sk_const_count = st.skolem_const_count 
+              and fv_count = st.free_var_count 
+              and uis = all_uninterpreted_symbols st.signature
+              in
                 state_reset_only_essentials st; (*FIXME might be better to have a "state" for each subproblem.
                                                   Also, free_var_count and skolem_const_count not being preserved.*)
                 ignore(set_clause_count st clause_count);
+                ignore(set_skolem_const_count st sk_const_count);
+                ignore(set_free_var_count st fv_count);
+
                 fo_clauses_init st; (*FIXME this function doesn't do anything*)
                 let (termlist, sigma, termroles) = parse_thf_string problem_array_thf.(!i)
                 in
                   set_signature st sigma; (* destructive inserting *)
+                  ignore(List.map (fun (name,ty) -> addifnew_uninterpreted_symbol st.signature name ty) uis);
+                  (* we copy the old uninterpreted symbols into the new signature *)
                   set_origproblem st termroles; (* destructive inserting *)
                   set_origproblem_filename st st.origproblem_filename; (* destructive inserting *)
                   set_index st termlist; (* destructive inserting *)
@@ -1668,14 +1679,14 @@ let prove_with_fo_atp (st : state) (prover : string) =
                     List.map (fun (name, term) ->
                                 let num = (int_of_string (String.sub name 1 (String.length name - 1)))
                                 in
-                                  mk_clause [lit_mk_pos_literal (term2xterm term)]
+                                  mk_clause [lit_mk_pos_literal st.signature (term2xterm term)]
                                     (inc_clause_count st) [] ("copy", [num, ""], "") AXIOM st)
                       named_axioms in
                   let named_negated_conjectures = Hashtbl.find_all termroles "negated_conjecture" in
                   let make_negated_conjecture name theorem =
                       let num = int_of_string (String.sub name 1 (String.length name - 1))
                       in
-                        mk_clause [lit_mk_pos_literal (term2xterm theorem)]
+                        mk_clause [lit_mk_pos_literal st.signature (term2xterm theorem)]
                           (inc_clause_count st) [] ("copy", [num, ""], "") CONJECTURE st in
                   let theorem_clauses =
                       List.map (fun (n, t) -> make_negated_conjecture n t) named_negated_conjectures

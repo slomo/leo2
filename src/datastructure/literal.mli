@@ -51,21 +51,26 @@ val lit_info : 'a lit_literal -> lit_info
 
 (** {6 Creation of Literals} *)
 
+
+(** This function creates a new literal *)
+
+val lit_mk_literal : Signature.signature -> 'a xterm -> bool -> string -> 'a lit_literal
+
 (** Given a term, this function creates a new positive literal of form term=Top *)
 
-val lit_mk_pos_literal : 'a xterm -> 'a lit_literal
+val lit_mk_pos_literal : Signature.signature -> 'a xterm -> 'a lit_literal
 
 (** Given a term, this function creates a new negative literal of form term=Bot *)
 
-val lit_mk_neg_literal : 'a xterm -> 'a lit_literal 
+val lit_mk_neg_literal : Signature.signature -> 'a xterm -> 'a lit_literal
 
 (** Given a term, this function creates a new negative literal of form (term1 = term2) =Bot *)
 
-val lit_mk_uni_literal : 'a xterm -> 'a xterm -> lit_info -> 'a lit_literal 
+val lit_mk_uni_literal : Signature.signature -> 'a xterm -> 'a xterm -> lit_info -> 'a lit_literal
 
 (** Given a term, this function creates a new positive  literal of form (term1 = term2) =Top *)
 
-val lit_mk_eq_literal : 'a xterm -> 'a xterm -> lit_info -> 'a lit_literal 
+val lit_mk_eq_literal : Signature.signature -> 'a xterm -> 'a xterm -> lit_info -> 'a lit_literal
 
 (** Test for flex flex unification literals *)
 

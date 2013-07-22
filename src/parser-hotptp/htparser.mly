@@ -84,6 +84,7 @@ let add_const (c,ty) =
 %token EXCLAMATION
 %token DOUBLEEXCLAMATION
 %token FOF
+%token QMF
 %token GETS
 %token GREATER
 %token HOF
@@ -109,6 +110,8 @@ let add_const (c,ty) =
 %token RBRKT
 %token RPAREN
 %token TILDE
+%token BOX
+%token DIAMOND
 %token TOK_FALSE
 %token TOK_I
 %token TOK_O
@@ -162,6 +165,7 @@ input : /* (Term.term list * Signature.signature * (string , string * Term.term)
   | input hof_annotated { (!terms,!sigma,!termroles) }
   | input fof_annotated { (!terms,!sigma,!termroles) }
   | input cnf_annotated { (!terms,!sigma,!termroles) }
+  | input qmf_annotated { (!terms,!sigma,!termroles) }
   | error { let startpos = Parsing.rhs_start_pos 1 in
             let endpos = Parsing.rhs_end_pos 1
             in
@@ -172,6 +176,10 @@ input : /* (Term.term list * Signature.signature * (string , string * Term.term)
 
 fof_annotated : /* unit */
     FOF LPAREN name COMMA formula_role COMMA fof_top annotations RPAREN PERIOD {State.set_input_logic "FOF"; !add_fun $3 $5}
+;
+
+qmf_annotated : /* unit */
+    QMF LPAREN name COMMA formula_role COMMA qmf_top annotations RPAREN PERIOD {State.set_input_logic "QMF"; !add_fun $3 $5}
 ;
 
 cnf_annotated : /* unit */
@@ -285,6 +293,14 @@ fof_top:
       add_term (multi_quantified (Symbol Signature.forall) (List.map (fun x -> (x,bt_i)) (free_vars $1)) $1);
       reset_bound_typevars() }
 ;
+
+
+qmf_top:
+    qmf_formula {(* print_string ("Read: "^(Term.to_hotptp $1)^"\n\n"); *)
+      add_term (multi_quantified (Symbol Signature.forall) (List.map (fun x -> (x,bt_i)) (free_vars $1)) $1);
+      reset_bound_typevars() }
+;
+
 
 cnf_top:
     cnf_formula {
@@ -418,6 +434,126 @@ fof_pred: /* Term.term */
     atomic_word { Symbol $1 }
 ;
 
+
+qmf_formula: /* Term.term */
+    qmf_unitary_formula { $1 }
+  | qmf_binary_formula { $1 }
+;
+
+qmf_binary_formula: /* Term.term */
+    qmf_nonassoc_binary { $1 }
+  | qmf_assoc_binary { $1 }
+;
+
+qmf_nonassoc_binary: /* Term.term */
+    qmf_unitary_formula fof_binary_connective qmf_unitary_formula { Appl(Appl($2,$1),$3) }
+;
+
+qmf_assoc_binary: /* Term.term */
+    qmf_and_formula { $1 }
+  | qmf_or_formula { $1 }
+;
+
+qmf_and_formula: /* Term.term */
+    qmf_unitary_formula AMPERSAND qmf_unitary_formula{ Appl(Appl(Symbol(Signature.conjunction),$1),$3) }
+  | qmf_and_formula AMPERSAND qmf_unitary_formula { Appl(Appl(Symbol(Signature.conjunction),$1),$3) }
+;
+
+qmf_or_formula: /* Term.term */
+    qmf_or_formula VLINE qmf_unitary_formula { Appl(Appl(Symbol(Signature.disjunction),$1),$3) }
+  | qmf_unitary_formula { $1 }
+;
+
+qmf_unitary_formula: /* Term.term */
+    qmf_quantified_formula { $1 }
+  | qmf_unary_formula { $1 }
+  | qmf_atomic_formula { $1 }
+  | qmf_boxed_formula { $1 }
+  | LPAREN qmf_formula RPAREN { $2 }
+;
+
+qmf_boxed_formula: /* Term.term */
+    boxoperator COLON qmf_unitary_formula { Appl($1,$3) }
+;
+		   
+qmf_quantified_formula: /* Term.term */
+    quantifier LBRKT qmf_variable_decls RBRKT COLON qmf_unitary_formula { multi_quantified $1 $3 $6 }
+;
+
+qmf_variable_decls: /* (string * Hol_type.hol_type) list */
+    qmf_variable_decl { [$1] }
+  | qmf_variable_decl COMMA qmf_variable_decls { $1::$3 }
+  ;
+
+qmf_variable_decl: /* (string * Hol_type.hol_type) */
+    qmf_variable { ($1,bt_i) }
+;
+
+qmf_unary_formula: /* Term.term */
+    qmf_unary_connective qmf_unitary_formula { Appl($1,$2) }
+;
+
+qmf_unary_connective: /* Term.term */
+    TILDE { Symbol(Signature.neg) }
+;
+
+qmf_atomic_formula: /* Term.term */
+    qmf_prop_const { Symbol $1 }
+  | qmf_term qmf_infix_pred qmf_term { Appl(Appl($2,$1),$3) }
+/*  | qmf_functor LPAREN qmf_args RPAREN qmf_infix_pred qmf_term {
+      add_const (get_symbol $1, mk_funtype (List.map (fun _ -> bt_i) $3) bt_i);
+      Appl(Appl($5,List.fold_left (fun acc arg -> Appl(acc,arg)) $1 $3),$6) } */
+  | qmf_pred LPAREN qmf_args RPAREN { (* print_string ("qmf_pred "^(Term.to_hotptp $1)^" with args ");
+                                      List.map (fun a -> print_string ((Term.to_hotptp a)^", ")) $3;
+                                      print_string "\n"; *)
+      add_const (get_symbol $1, mk_funtype (List.map (fun _ -> bt_i) $3) bt_o);
+      List.fold_left (fun acc arg -> Appl(acc,arg)) $1 $3 }
+;
+
+qmf_prop_const: /* String */
+    TOK_TRUE { Signature.ctrue }
+  | TOK_FALSE { Signature.cfalse }
+  | atomic_word { add_const ($1,bt_o); $1 }
+;
+
+qmf_infix_pred: /* Term.term */
+  | EQUALS { Symbol(Signature.equality) }
+  | NEQUALS { Symbol(Signature.nequals) }
+;
+
+qmf_args: /* Term.term list */
+    qmf_term { [$1] }
+  | qmf_term COMMA qmf_args { $1::$3 }
+;
+
+qmf_term: /* Term.term */
+    qmf_constant { $1 }
+  | qmf_variable { Symbol $1 }
+/*  | qmf_functor LPAREN qmf_args RPAREN { */
+  | qmf_pred LPAREN qmf_args RPAREN {
+      add_const (get_symbol $1, mk_funtype (List.map (fun _ -> bt_i) $3) bt_i);
+      List.fold_left (fun acc arg -> Appl(acc,arg)) $1 $3 }
+;
+
+qmf_constant:
+    atomic_word { (* print_string ("There's a constant of type $i: "^$1^"\n"); *) add_const ($1, bt_i);
+      Symbol $1 }
+  | number { Symbol $1 }
+;
+
+qmf_variable:
+    variable { $1 }
+;
+
+/*
+qmf_functor:*/ /* Term.term */ /*
+    atomic_word { Symbol $1 }
+;
+*/
+
+qmf_pred: /* Term.term */
+    atomic_word { Symbol $1 }
+;
 
 thf_logic_formula : /* Term.term */
     thf_binary_formula { $1 }
@@ -558,6 +694,11 @@ quantified_term : /* Term.term */
 quantifier : /* Term.term */
     EXCLAMATION { Symbol(Signature.forall) }
   | QUESTION { Symbol(Signature.exists) }
+;
+
+boxoperator : /* Term.term */
+    BOX { Symbol(Signature.box) }
+  | DIAMOND { Symbol(Signature.diamond) }	  
 ;
 
 apply_term : /* Term.term */

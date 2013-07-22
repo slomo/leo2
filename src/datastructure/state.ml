@@ -178,6 +178,8 @@ type flags = {
     mutable ordering : Orderings.ordering;
     mutable max_local_time : int;
     mutable sos : bool;
+    mutable use_extcnf_combined : bool;
+    mutable expand_extuni : bool;
   }
 
 (*LEO's main search state*)
@@ -274,7 +276,9 @@ let state_initialize =
                use_extuni = true;
                max_local_time = 600;
                ordering = Orderings.None;
-               sos = true
+               sos = true;
+               use_extcnf_combined = true;
+               expand_extuni = false;
               }
     }
 
@@ -576,6 +580,14 @@ let set_flag_use_extuni (ls : state) (flag : bool) =
   ls.flags.use_extuni <- flag;
   flag
 
+let set_flag_use_extcnf_combined (ls : state) (flag : bool) =
+  ls.flags.use_extcnf_combined <- flag;
+  flag
+
+let set_flag_expand_extuni (ls : state) (flag : bool) =
+  ls.flags.expand_extuni <- flag;
+  flag
+
 let set_flag_max_local_time (ls : state) (i : int) =
   ls.flags.max_local_time <- i;
   i
@@ -604,6 +616,8 @@ let summary_stats_string st =
     ",rAndEQ:" ^ string_of_bool st.flags.replace_andrewsEQ ^
     ",use_choice:" ^ string_of_bool st.flags.use_choice ^
     ",use_extuni:" ^ string_of_bool st.flags.use_extuni ^
+    ",use_extcnf_combined:" ^ string_of_bool st.flags.use_extcnf_combined ^
+    ",expand_extuni:" ^ string_of_bool st.flags.expand_extuni ^
     ",foatp:" ^ st.flags.atp_prover ^
     ",atp_timeout:" ^ string_of_int st.flags.atp_timeout ^
     ",atp_calls_frequency:" ^ string_of_int st.flags.atp_calls_frequency ^

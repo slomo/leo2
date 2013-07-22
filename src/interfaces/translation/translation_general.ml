@@ -170,5 +170,5 @@ let role_to_string = function
 
 let change_proxy_role_to_axiom (role : af_role) : af_role =
   match role with
-      Proxy -> Plain
+      Proxy -> Axiom
     | _ -> role

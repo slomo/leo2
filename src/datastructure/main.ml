@@ -227,6 +227,7 @@ let rec create_and_insert_skolem_const (t:term) (ty:hol_type) (st:state) =
     Symbol n -> 
       (* let newsym = ("sK"^(string_of_int (inc_skolem_const_count st))) in *)
       let newsym = ("sK"^(string_of_int (inc_skolem_const_count st))^"_"^n) in 
+      let _ =  Util.sysout 3 ("\n New Skolem term: "^newsym^" Type: "^(to_string ty)) in
       if is_defined_symbol st.signature newsym || is_uninterpreted_symbol st.signature newsym
       then create_and_insert_skolem_const t ty st  (* new try with increased symbol counter *)
       else 
@@ -953,7 +954,7 @@ let rec mk_clause (litlist : role lit_literal list) (cl_number : int)
             "]: (" ^ lit_litlist_to_protocol ll ^ ")"
   in
     if litlist = [] then
-      let newlitlist = [lit_mk_pos_literal (Explicit (Symbol cfalse))] in
+      let newlitlist = [lit_mk_pos_literal st.signature (Explicit (Symbol cfalse))] in
       let newclause = cl_mk_clause newlitlist cl_number free_vars info origin in
         add_to_protocol (cl_number, info, quantified_litlist_string newlitlist) st;
         add_to_protocol (cl_number + 1, ("dummyTSTP", [(cl_number, "")], ""), "$false") st;
@@ -1274,9 +1275,10 @@ let expand_nonlogical_defs (cl:cl_clause) (st:state) =
   let newlits = 
     List.map 
       (fun l -> 
-	 if l.lit_polarity 
-	 then lit_mk_pos_literal (term2xterm (unfold_nonlogical_defs (xterm2term l.lit_term) st))
-	 else lit_mk_neg_literal (term2xterm (unfold_nonlogical_defs (xterm2term l.lit_term) st))
+	 if l.lit_polarity then
+     lit_mk_pos_literal st.signature (term2xterm (unfold_nonlogical_defs (xterm2term l.lit_term) st))
+	 else
+     lit_mk_neg_literal st.signature (term2xterm (unfold_nonlogical_defs (xterm2term l.lit_term) st))
       )
       lits 
   in 
@@ -1288,9 +1290,10 @@ let expand_logical_defs (cl:cl_clause) (st:state) =
   let newlits = 
     List.map 
       (fun l -> 
-	 if l.lit_polarity 
-	 then lit_mk_pos_literal (term2xterm (unfold_logical_defs (xterm2term l.lit_term) st))
-	 else lit_mk_neg_literal (term2xterm (unfold_logical_defs (xterm2term l.lit_term) st)))
+	 if l.lit_polarity then
+     lit_mk_pos_literal st.signature (term2xterm (unfold_logical_defs (xterm2term l.lit_term) st))
+	 else
+     lit_mk_neg_literal st.signature (term2xterm (unfold_logical_defs (xterm2term l.lit_term) st)))
       lits 
   in 
     [mk_clause newlits (inc_clause_count st) 

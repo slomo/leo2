@@ -87,6 +87,8 @@ type flags = {
     mutable ordering : Orderings.ordering;
     mutable max_local_time : int;
     mutable sos : bool;
+    mutable use_extcnf_combined : bool;
+    mutable expand_extuni : bool;
   }
 
 (*LEO's main search state*)
@@ -232,6 +234,10 @@ val set_flag_replace_andrewsEQ : state -> bool -> bool
 val set_flag_use_choice : state -> bool -> bool
 
 val set_flag_use_extuni : state -> bool -> bool
+
+val set_flag_use_extcnf_combined : state -> bool -> bool
+
+val set_flag_expand_extuni : state -> bool -> bool
 
 val set_flag_max_local_time : state -> int -> int
 

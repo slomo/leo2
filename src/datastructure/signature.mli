@@ -32,6 +32,8 @@ val interpreted_constants : string list
 val ctrue : string
 val cfalse : string
 val neg : string
+val box : string
+val diamond : string
 val forall : string
 val disjunction : string
 val equality : string
@@ -70,6 +72,8 @@ val add_defined_symbol : ?ty:Hol_type.hol_type option -> signature -> string -> 
 val defined_symbol_set_type : signature -> string -> Hol_type.hol_type -> unit
 
 val add_uninterpreted_symbol : signature -> string -> hol_type -> unit
+
+val addifnew_uninterpreted_symbol : signature -> string -> hol_type -> unit
 
 
 (** {6 Access functions} *)
