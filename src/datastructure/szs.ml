@@ -139,6 +139,10 @@ let relation =
 
 ];;
 
+let string_from_szs (szs) : string =
+  fst (List.assoc szs status_strings)
+
+
 (* FIXME: use maybe here *)
 let read_status (string:string) : status option =
   try
