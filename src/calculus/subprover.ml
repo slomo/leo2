@@ -228,7 +228,7 @@ let is_success (pr: subprover_run) (ret:Szs.status) =  Szs.is_a ret Szs.SUC ;;
 let default_subprovers = [
    {
      sp_type = Folprover; path = "eprover";
-     name = "E"; options = ["--auto"; "--tptp3-format"] }
+     name = "E"; options = ["-xAuto"; "-tAuto"; "--memory-limit=Auto"; "--cpu-limit=10"; "--tptp3-format";"-s"] }
 ];;
 
 
