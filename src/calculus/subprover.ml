@@ -119,6 +119,12 @@ let start (prover : subprover) (input : string) : subprover_run =
 
   in
 
+  let my_fork_strace cmd args =
+    let args = cmd :: args in
+    let cmd = "strace" in
+    my_fork cmd args
+  in
+
 
   match prover with
   | {  path = path; options = options } ->
