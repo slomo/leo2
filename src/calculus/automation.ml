@@ -728,69 +728,78 @@ let atp_mains =
      List.map (fun cl -> (cl.cl_number, "")) candidate_clauses
    in
 
-     (* Question: what is the purpose of this, which clauses are added? *)
+
+
+
+   begin
+
      Translation.tr_add_fo_clauses candidate_clauses st;
+
+
+
+     read_atp_config ();
+       (* let apply_prover = get_atp_main prover in
+            (*FIXME use a config record rather than hardcoding this*)
+          if prover <> "e" then
+          begin
+          let file_in = atp_infile st in
+          let chan = open_out file_in in
+          let fo_clauses = get_fo_clauses st in
+          Util.register_tmpfile file_in;
+          output_string chan fo_clauses;
+          close_out chan;
+          Util.sysout 1 ("\n*** File " ^ file_in ^ " written; it contains " ^
+          "translations of the FO-like clauses in LEO-II's search space into " ^
+          "target syntax. Here is its content: ***\n");
+          Util.sysout 1 fo_clauses;
+          Util.sysout 1 ("\n*** End of file " ^ file_in ^ " ***\n")
+          end; *)
+     st.foatp_calls <- st.foatp_calls + 1;
+
+       (* if there are new fo-formulars add them *)
      if not !Translation.next_atp_call_is_redundant then
-       begin
-         read_atp_config ();
-         let apply_prover = get_atp_main prover in
-           (*FIXME use a config record rather than hardcoding this*)
-           if prover <> "e" then
-             begin
-               let file_in = atp_infile st in
-               let chan = open_out file_in in
-               let fo_clauses = get_fo_clauses st in
-                 Util.register_tmpfile file_in;
-                 output_string chan fo_clauses;
-                 close_out chan;
-                 Util.sysout 1 ("\n*** File " ^ file_in ^ " written; it contains " ^
-                                  "translations of the FO-like clauses in LEO-II's search space into " ^
-                                  "target syntax. Here is its content: ***\n");
-                 Util.sysout 1 fo_clauses;
-                 Util.sysout 1 ("\n*** End of file " ^ file_in ^ " ***\n")
-             end;
-           st.foatp_calls <- st.foatp_calls + 1;
-           let (result, used_clauses, protocol) =
+       Subprover.submit_problem st;
 
-             Subprover.submit_problem st;
-             Subprover.tick st;
-             (* print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>\n";
-             Subprover.debug ();
-             print_string "\n<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>\n"; *)
+     let (result, used_clauses, protocol) =
+       Subprover.tick st;
+       print_string ":";
+(*       print_string "\n<<<<<<<<<<<<<<<<<\n";
+       Subprover.debug ();
+       print_string "\n>>>>>>>>>>>>>>>>>\n"; *)
 
 
-             let results = Subprover.collect_solutions st in
+       let results = Subprover.collect_solutions st in
 
-             if List.length(results) > 0 then
-               List.hd(results)
-             else
-               (false, [], "")
+       if List.length(results) > 0 then
+         List.hd(results)
+       else
+         (false, [], "")
 
-(*                 memorize_execution_time st.origproblem_filename
-                 "atp" st.loop_count apply_prover st *)
-          in
-            (* Util.try_delete_file file_in; *)
-            match (result, used_clauses) with
-                (true, []) ->
-                  (*The external prover didn't require to use any specific clauses to
-                    prove the result*)
-                  ignore(mk_clause [] (inc_clause_count st) []
-                           ("fo_atp_" ^ prover, candidate_clauses_numbers_and_strings, "")
-                           DERIVED st)
-              | (true, cl_list) ->
-                  (*Link the specific clauses used by the external prover with the
-                    conclusion it derived*)
-                  let clauses_number_and_strings =
-                    List.map (fun intstr -> (int_of_string intstr, "")) cl_list
-                  in
-                    ignore(mk_clause [] (inc_clause_count st) []
-                             ("fo_atp_" ^ prover, clauses_number_and_strings, "") DERIVED st)
-              | (false, _) -> ()
-      end
+       (*                 memorize_execution_time st.origproblem_filename
+                          "atp" st.loop_count apply_prover st *)
+     in
+       (* Util.try_delete_file file_in; *)
+     match (result, used_clauses) with
+       (true, []) ->
+           (*The external prover didn't require to use any specific clauses to
+             prove the result*)
+         ignore(mk_clause [] (inc_clause_count st) []
+                  ("fo_atp_" ^ prover, candidate_clauses_numbers_and_strings, "")
+                  DERIVED st)
+     | (true, cl_list) ->
+         (*Link the specific clauses used by the external prover with the
+           conclusion it derived*)
+       let clauses_number_and_strings =
+         List.map (fun intstr -> (int_of_string intstr, "")) cl_list
+       in
+       ignore(mk_clause [] (inc_clause_count st) []
+                ("fo_atp_" ^ prover, clauses_number_and_strings, "") DERIVED st)
+     | (false, _) -> ()
+   end
 
 let call_fo_atp_early (st:state) (prover:string) =
   match st.problem_stack with
-      [cl] -> 
+      [cl] ->
 	let candidate_clauses = ([cl]@st.problem_axioms) in
        (* let _ = index_clauselist_with_role candidate_clauses st in *)
        (* let expanded_candidate_clauses = (raise_to_list expand_nonlogical_defs) candidate_clauses st in *)
