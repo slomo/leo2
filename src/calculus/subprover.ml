@@ -298,12 +298,17 @@ let get_solutions (sc:controller) : (bool * string list * string) list =
   (* remove all unsucessfull *)
   let successfull = List.filter
     (fun (pr) -> match pr with
-    | {szs= szs} ->  Szs.is_a Szs.SUC szs)
+    | {szs= szs} ->
+      print_string "<<<<<<<<<<<?\n";
+      print_string (Szs.string_from_szs szs);
+      print_string "?>>>>>>>>>>>\n";
+      Szs.is_a Szs.UNS szs)
     prover_results in
+
 
   (* fixme: check if prove is needed *)
   (* fixme: rething leagcy format *)
-  List.map (fun(pr) -> (true,pr.fragments,""))  successfull
+  List.map (fun(pr) -> (true,[],""))  successfull
 ;;
 
 let perform_update sc =
