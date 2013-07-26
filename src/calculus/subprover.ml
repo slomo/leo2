@@ -89,60 +89,47 @@ exception Subprover_failed
 *)
 let start (prover : subprover) (input : string) : subprover_run =
 
-  (* This implements the behaviour of Unix.open_process, but returns
-     pid in additon to in and out channels. *)
-  let my_fork cmd args  =
-
-    let ( from_caller, to_cmd ) = Unix.pipe() in
-    let ( from_cmd, to_caller ) = Unix.pipe() in
-
-    let cmd_pipe_setup () =
-      Unix.close to_cmd; Unix.close from_cmd;
-
-      Unix.dup2 from_caller Unix.stdin;
-      Unix.dup2 to_caller Unix.stdout;
-
-      Unix.close to_caller; Unix.close from_caller;
-    in
-
-    let caller_pipe_setup () =
-      Unix.close from_caller; Unix.close to_caller;
-    in
-
-    match  Unix.fork() with
-    | 0 -> cmd_pipe_setup(); Unix.execvp cmd ( Array.of_list ( cmd :: args))
-    | cmd_pid -> caller_pipe_setup(); (
-      cmd_pid,
-      Unix.in_channel_of_descr from_cmd,
-      Unix.out_channel_of_descr to_cmd
-    )
-
+  (* This creates a pipe backed, through an non existing file. This
+     results in a pipe with infinit buffer, which might get slow if
+     the disk cache is running full *)
+  let file_pipe () =
+    let tmp_file = "/tmp/leo_file_pipe" in
+    let write_end = Unix.openfile tmp_file
+      [ Unix.O_CREAT; Unix.O_WRONLY; Unix.O_TRUNC ] 0o600 in
+    let read_end = Unix.openfile tmp_file
+      [ Unix.O_RDONLY ] 0o006 in
+    Unix.unlink (tmp_file);
+    (read_end, write_end)
   in
 
-  let my_fork_strace cmd args =
-    let args = cmd :: args in
-    let cmd = "strace" in
-    my_fork cmd args
-  in
+  let (from_caller, to_cmd) = Unix.pipe() in
+  let (from_cmd, to_caller) = file_pipe() in
 
+  (* viewed from the perspective of leo *)
+  let in_chan = Unix.in_channel_of_descr from_cmd in
+  let out_chan = Unix.out_channel_of_descr to_cmd in
+
+  (* write problem to stdin of subprover *)
+  output_string out_chan input;
+  flush out_chan;
+  close_out out_chan;
 
   match prover with
-  | {  path = path; options = options } ->
+  | { path = cmd; options = args} ->
 
-    let (pid, in_chan, out_chan) = my_fork path options in
-    output_string out_chan input;
-    flush out_chan;
-    close_out out_chan;
+    (* set argv[0] for subprover *)
+    let args = cmd :: args in
     {
       subprover =  prover;
-      pid = pid;
+      pid = Unix.create_process cmd (Array.of_list args) from_caller to_caller Unix.stderr;
       channels = ( out_chan, in_chan );
       finished = false;
       killed = false;
       value = 0;
     }
-
 ;;
+
+
 
 (**
    Tries to gather information, wether the specified subprover run finished
@@ -232,9 +219,12 @@ let is_active (pr : subprover_run) = not pr.finished ;;
 let is_success (pr: subprover_run) (ret:Szs.status) =  Szs.is_a ret Szs.SUC ;;
 
 let default_subprovers = [
-   {
-     sp_type = Folprover; path = "eprover";
-     name = "E"; options = ["-xAuto"; "-tAuto"; "--memory-limit=Auto"; "--cpu-limit=10"; "--tptp3-format";"-s"] }
+   { sp_type = Folprover;
+     path = "/home/yves/uni/ma/E/PROVER/eprover";
+     name = "E";
+     options = [
+       "-xAuto"; "-tAuto"; "--memory-limit=Auto";
+       "--tptp3-format"; "--cpu-limit=10"]}
 ];;
 
 
