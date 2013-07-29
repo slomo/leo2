@@ -58,6 +58,6 @@ type status =
 exception InvalidSzsStatus of string
 val status_strings : (status * (string * string)) list
 val relation : (status * status list) list
-val string_from_szs : status -> string
+val string_of_szs : status -> string
 val read_status : string -> status option
 val is_a : status -> status -> bool

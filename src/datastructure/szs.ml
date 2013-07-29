@@ -139,7 +139,7 @@ let relation =
 
 ];;
 
-let string_from_szs (szs) : string =
+let string_of_szs (szs) : string =
   fst (List.assoc szs status_strings)
 
 
