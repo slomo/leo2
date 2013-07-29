@@ -66,7 +66,6 @@ type subprover_run = {
   subprover: subprover;
   pid: int;
   channels: out_channel * in_channel;
-  finished: bool;
   killed: bool;
   value: int;
 };;
@@ -81,6 +80,18 @@ type subprover_result = {
   fragments: string list;
   szs: Szs.status
 }
+
+let string_of_result ({szs= szs}:subprover_result) =
+  "result(" ^ Szs.string_of_szs szs ^ ")"
+
+type controller = {
+  max_parrallel: int;
+  provers:  subprover list;
+  running: subprover_run list;
+  waiting: ( string * subprover) list;
+  finished: subprover_result list;
+};;
+
 
 exception Subprover_failed
 
@@ -123,12 +134,10 @@ let start (prover : subprover) (input : string) : subprover_run =
       subprover =  prover;
       pid = Unix.create_process cmd (Array.of_list args) from_caller to_caller Unix.stderr;
       channels = ( out_chan, in_chan );
-      finished = false;
       killed = false;
       value = 0;
     }
 ;;
-
 
 
 (**
@@ -146,32 +155,11 @@ let check_for_termination blocking sr =  match sr with
 
       if return_pid == pid then
         match status with
-        | Unix.WEXITED n   -> { sr with finished = true; value = n }
+        | Unix.WEXITED n   -> { sr with value = n }
         | Unix.WSIGNALED n
-        | Unix.WSTOPPED n -> { sr with finished = true; killed = true; value = n }
+        | Unix.WSTOPPED n -> { sr with killed = true; value = n }
       else
         sr
-;;
-
-(** Fetches the result from a sucessfully terminated suprover, throws an exception otherwiese *)
-let fetch_result finished_pr =
-
-  (* TODO: read only as long as needed, we might aort if an undesired szs status is met *)
-  let read_all_in chan =
-    let lines = ref [] in
-    try
-      while true; do
-        lines := input_line chan :: !lines
-      done; []
-    with End_of_file ->
-      close_in chan;
-      List.rev !lines
-  in
-
-  if (not finished_pr.killed && finished_pr.value == 0) then
-    String.concat "\n" (read_all_in (snd finished_pr.channels))
-  else
-    raise Subprover_failed
 ;;
 
 (** transform a run to a result *)
@@ -196,6 +184,50 @@ let to_result (pr:subprover_run) : subprover_result =
     szs = szs
   }
 
+;;
+
+
+let result_from_run pr status =
+  let res = match status with
+  | Unix.WEXITED n -> { pr with value = n }
+  | Unix.WSIGNALED n
+  | Unix.WSTOPPED n -> { pr with killed = true; value = n }
+  in to_result res
+;;
+
+let set_terminated pid status ({ running =  running; finished = finished} as sc) =
+  let now_finished = List.find
+    (fun ({pid = thisPid}) -> pid == thisPid) running in
+  let still_running = List.filter
+    (fun ({pid = thisPid}) -> pid != thisPid) running in
+  { sc with
+    running = running;
+    finished = (result_from_run now_finished status) :: finished
+  }
+;;
+
+
+(** Fetches the result from a sucessfully terminated suprover, throws an exception otherwiese *)
+let fetch_result finished_pr =
+
+  (* TODO: read only as long as needed, we might aort if an undesired szs status is met *)
+  let read_all_in chan =
+    let lines = ref [] in
+    try
+      while true; do
+        lines := input_line chan :: !lines
+      done; []
+    with End_of_file ->
+      close_in chan;
+      List.rev !lines
+  in
+
+  if (not finished_pr.killed && finished_pr.value == 0) then
+    String.concat "\n" (read_all_in (snd finished_pr.channels))
+  else
+    raise Subprover_failed
+;;
+
 
 
 
@@ -208,12 +240,6 @@ let wait pr =
 let update pr = check_for_termination false pr;;
 
 let kill pr = Unix.kill pr.pid Sys.sigterm
-
-(** Checks wether the given subprover_run structure has been set to finished *)
-let is_finished (pr : subprover_run) = pr.finished ;;
-
-(** Opposite of is_finished *)
-let is_active (pr : subprover_run) = not pr.finished ;;
 
 (** Checks wather the given prover run was successfull *)
 let is_success (pr: subprover_run) (ret:Szs.status) =  Szs.is_a ret Szs.SUC ;;
@@ -232,13 +258,6 @@ let default_subprovers = [
 
 (** {3 High-Level API } *)
 
-type controller = {
-  max_parrallel: int;
-  provers:  subprover list;
-  running: subprover_run list;
-  waiting: ( string * subprover) list;
-  finished: subprover_run list;
-};;
 
 let string_of_controller (controller:controller) = match controller with
   | { max_parrallel = mp; provers = provers;
@@ -246,30 +265,9 @@ let string_of_controller (controller:controller) = match controller with
       finished = finished } ->
     "{ running: " ^ String.concat "\n           " (List.map string_of_run running) ^ "\n" ^
     "  waiting: " ^ String.concat "\n           " (List.map (string_of_prover |- snd) waiting) ^ "\n" ^
-    "  finishd: " ^ String.concat "\n           " (List.map string_of_run finished)  ^ "}"
+    "  finishd: " ^ String.concat "\n           " (List.map string_of_result finished)  ^ "}"
 ;;
 
-let init ?(parrallel = 0) (provers: subprover list) =
-
-  let detect_cpu_count () =
-    try
-      let close chan = ignore (Unix.close_process_in chan) in
-      let i = Unix.open_process_in "getconf _NPROCESSORS_ONLN" in
-      try Scanf.fscanf i "%d" (fun n -> close i; n) with e -> close i; raise e
-    with
-    | e -> 1
-  in
-
-  let parrallel = if parrallel >= 1 then parrallel else detect_cpu_count() in
-  {
-    max_parrallel = parrallel;
-    running = [];
-    provers = provers;
-    waiting = [];
-    finished = [];
-  }
-
-;;
 
 (** helpers *)
 let with_ref_do (refa :  'a ref) (f : 'a -> 'a) : unit =
@@ -286,18 +284,12 @@ let add_problem (fo_clauses:string) : controller -> controller =
 let get_solutions (sc:controller) : (bool * string list * string) list =
 
   (* get szs_codes  *)
-  let prover_results = List.map
-    (fun (prover_run) -> to_result prover_run)
-    sc.finished
-  in
+  let prover_results = sc.finished in
 
   (* remove all unsucessfull *)
   let successfull = List.filter
     (fun (pr) -> match pr with
     | {szs= szs} ->
-      print_string "<<<<<<<<<<<?\n";
-      print_string (Szs.string_from_szs szs);
-      print_string "?>>>>>>>>>>>\n";
       Szs.is_a Szs.UNS szs)
     prover_results in
 
@@ -315,12 +307,7 @@ let perform_update sc =
     | rem -> ([],rem)
   in
 
-  (* update status *)
-  let updated_runs = List.map update sc.running in
-
-  (* remove finished *)
-  let now_finished =  List.filter is_finished updated_runs in
-  let still_running = List.filter is_active updated_runs in
+  let still_running = sc.running in
 
   (* start as many new as possible *)
   let capacity = sc.max_parrallel -  (List.length still_running) in
@@ -331,12 +318,11 @@ let perform_update sc =
 
   { sc with
     running = List.append still_running now_running;
-    waiting = still_waiting;
-    finished = List.append now_finished sc.finished }
+    waiting = still_waiting }
 ;;
 
 (** Kill all subprovers that haven't terminating by them self *)
-let kill_all_provers (sc:controller) : controller  =
+(*let kill_all_provers (sc:controller) : controller  =
   let now_finished = List.map (fun prover_run ->
     if is_active(prover_run)
     then prover_run
@@ -345,11 +331,77 @@ let kill_all_provers (sc:controller) : controller  =
   let all_finished = List.append sc.finished now_finished in
   { sc with finished = all_finished } ;;
 
-
+*)
 (** api functions *)
 
+type message =
+  Terminated of int * Unix.process_status
+| Problem of string
+
+type result_message =
+  FofSuccess of string list
+
+let channel : message Event.channel = Event.new_channel ();;
+
+let result_channel : result_message Event.channel = Event.new_channel();;
+
+let collect_solutions (st:State.state) : (bool * string list * string) list =
+  match Event.poll (Event.receive result_channel) with
+  | None -> [(false, [], "")]
+  | Some (FofSuccess formulars) -> [(true, formulars, "")]
+;;
+
+
+(* let poll_termination () =
+  Unix.waitpid [ Unix.WNOHANG  ] pid
+*)
+
+
+let rec notify_termination_loop () =
+  let (pid, status) = Unix.wait () in
+  Event.sync (Event.send channel (Terminated (pid, status)));
+  notify_termination_loop ()
+;;
+
+let rec main_loop sc =
+  let event = Event.receive channel in
+  let new_state = match Event.sync event with
+    | Terminated (pid, status) -> set_terminated pid status sc
+    | Problem fo_str -> (add_problem fo_str) sc
+  in
+  if List.exists (fun ({szs = szs}) -> Szs.is_a szs Szs.UNS) sc.finished
+  then Event.sync (Event.send result_channel (FofSuccess []) );
+  main_loop (perform_update sc)
+;;
+
+let init ?(parrallel = 0) (provers: subprover list) =
+  let detect_cpu_count () =
+    try
+      let close chan = ignore (Unix.close_process_in chan) in
+      let i = Unix.open_process_in "getconf _NPROCESSORS_ONLN" in
+      try Scanf.fscanf i "%d" (fun n -> close i; n) with e -> close i; raise e
+    with
+    | e -> 1
+  in
+
+  let parrallel = if parrallel >= 1
+    then parrallel else detect_cpu_count() in
+  let sc = {
+    max_parrallel = parrallel;
+    running = [];
+    provers = provers;
+    waiting = [];
+    finished = [];
+  } in
+
+  ignore (Thread.create notify_termination_loop ());
+  ignore (Thread.create main_loop sc);
+  sc
+;;
+
+
 (* FIXME: move to state *)
-let sp_controller = ref (init ~parrallel:2 default_subprovers);;
+let sp_controller = ref (init ~parrallel:1 default_subprovers);;
 
 (** Intended usage:
 
@@ -366,21 +418,23 @@ let sp_controller = ref (init ~parrallel:2 default_subprovers);;
 
 let submit_problem (st:State.state) =
   let fo_clauses:string = Main.get_fo_clauses st in
-  with_ref_do sp_controller (add_problem fo_clauses)
+  print_string "submitted";
+  Event.sync (Event.send channel (Problem fo_clauses));
+  Thread.yield ()
+(*  with_ref_do sp_controller (add_problem fo_clauses) *)
 ;;
 
-let collect_solutions (st:State.state) : (bool * string list * string) list =
-  get_solutions !sp_controller
-;;
 
 let tick (st:State.state) =
   with_ref_do sp_controller perform_update
 ;;
 
-let tick_final (st:State.state) =
+(*let tick_final (st:State.state) =
    with_ref_do sp_controller kill_all_provers
-;;
+;;*)
 
 let debug () =
   print_string (string_of_controller !sp_controller);
 ;;
+
+

@@ -538,7 +538,7 @@ let leo_main () =
         ignore(Sys.signal Sys.sigvtalrm
                  (Sys.Signal_handle
                     (fun _ ->
-                       assert global_conf.interactive;
+                       (* assert global_conf.interactive; *)
                        (*if in interactive mode then preserve current behaviour*)
                        Interactive.handle_timeout ())));
       (*FIXME check if following exclusion affects zombies*)

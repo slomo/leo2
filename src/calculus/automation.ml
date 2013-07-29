@@ -722,22 +722,14 @@ let atp_mains =
  let call_fo_atp_help (st:state) (prover:string)
      (candidate_clauses:cl_clause list) : unit =
 
-
    (* build candidate clauses *)
    let candidate_clauses_numbers_and_strings =
      List.map (fun cl -> (cl.cl_number, "")) candidate_clauses
    in
 
-
-
-
    begin
-
      Translation.tr_add_fo_clauses candidate_clauses st;
-
-
-
-     read_atp_config ();
+     (* read_atp_config (); *)
        (* let apply_prover = get_atp_main prover in
             (*FIXME use a config record rather than hardcoding this*)
           if prover <> "e" then
@@ -761,13 +753,6 @@ let atp_mains =
        Subprover.submit_problem st;
 
      let (result, used_clauses, protocol) =
-       Subprover.tick st;
-       print_string ":";
-(*       print_string "\n<<<<<<<<<<<<<<<<<\n";
-       Subprover.debug ();
-       print_string "\n>>>>>>>>>>>>>>>>>\n"; *)
-
-
        let results = Subprover.collect_solutions st in
 
        if List.length(results) > 0 then
@@ -782,7 +767,7 @@ let atp_mains =
      match (result, used_clauses) with
        (true, []) ->
            (*The external prover didn't require to use any specific clauses to
-             prove the result*)
+            prove the result*)
          ignore(mk_clause [] (inc_clause_count st) []
                   ("fo_atp_" ^ prover, candidate_clauses_numbers_and_strings, "")
                   DERIVED st)

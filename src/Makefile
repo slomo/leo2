@@ -35,6 +35,16 @@ ifeq ($(Wall),true)
 	WARN=-w +A
 endif
 
+THREADFLG=
+THREADLIB=
+THREADOPTLIB=
+ifeq ($(thread),true)
+	SWITCHES+= -DTHREAD
+	THREADFLG= -thread
+	THREADLIB= threads.cma
+	THREADOPTLIB = thread.cmxa
+endif
+
 #Useful for building toplevel
 ifeq ($(no_main),true)
 	SWITCHES += -DTOPLEVEL
@@ -162,9 +172,9 @@ endif
 PREPROCESS=-pp "$(CAMLP4O) Camlp4MacroParser.cmxs $(SWITCHES)"
 
 # add other options for ocamlc here
-OCAMLFLAGS=$(ANNOTFLG) $(DEBUGFLG) $(INCLUDES) unix.cma str.cma $(PWD)/interfaces/minisat/dllminisatinterface.so $(EXTUNIX_INCLUSION) $(WARN) $(PREPROCESS)
+OCAMLFLAGS=$(ANNOTFLG) $(DEBUGFLG) $(THREADFLG) $(INCLUDES) unix.cma $(THREADLIB) str.cma $(PWD)/interfaces/minisat/dllminisatinterface.so $(EXTUNIX_INCLUSION) $(WARN) $(PREPROCESS)
 # add other options for ocamlopt here
-OCAMLOPTFLAGS=$(ANNOTFLG) $(DEBUGFLG) -inline 0 $(INCLUDES) unix.cmxa str.cmxa $(PWD)/interfaces/minisat/libminisatinterface.a $(EXTUNIX_INCLUSION_OPT) -cclib -lstdc++ $(STATICFLGS) $(PREPROCESS)
+OCAMLOPTFLAGS=$(ANNOTFLG) $(DEBUGFLG) $(THREADFLG) -inline 0 $(INCLUDES) unix.cmxa $(THREADOPTLIB) str.cmxa $(PWD)/interfaces/minisat/libminisatinterface.a $(EXTUNIX_INCLUSION_OPT) -cclib -lstdc++ $(STATICFLGS) $(PREPROCESS)
 OCAMLDOCFLAGS=$(INCLUDES) -d $(DOCDIR) -html -hide Pervasives
 
 
