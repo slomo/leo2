@@ -165,7 +165,7 @@ type flags = {
     mutable pretty_print_only : bool;
     mutable fo_translation : string;
     mutable atp_calls_frequency : int;
-    mutable atp_prover : string;
+    mutable atp_provers : string list;
     mutable atp_timeout : int;
     mutable proof_output : int;
     mutable prim_subst : int;
@@ -264,7 +264,7 @@ let state_initialize =
                pretty_print_only = false;
                fo_translation = "fof_full";
                atp_calls_frequency = 10;
-               atp_prover = "none";
+               atp_provers = [];
                atp_timeout = 25;
                proof_output = 0;
                prim_subst = 3;
@@ -540,8 +540,8 @@ let set_flag_atp_calls_frequency (ls : state) (i : int) =
   ls.flags.atp_calls_frequency <- i;
   i
 
-let set_flag_atp_prover (ls : state) (str : string) =
-  ls.flags.atp_prover <- str;
+let set_flag_atp_provers (ls : state) (str : string list) =
+  ls.flags.atp_provers <- str;
   str
 
 let set_flag_atp_timeout (ls : state) (i : int) =
@@ -618,7 +618,7 @@ let summary_stats_string st =
     ",use_extuni:" ^ string_of_bool st.flags.use_extuni ^
     ",use_extcnf_combined:" ^ string_of_bool st.flags.use_extcnf_combined ^
     ",expand_extuni:" ^ string_of_bool st.flags.expand_extuni ^
-    ",foatp:" ^ st.flags.atp_prover ^
+    ",foatps:" ^ String.concat " " st.flags.atp_provers ^
     ",atp_timeout:" ^ string_of_int st.flags.atp_timeout ^
     ",atp_calls_frequency:" ^ string_of_int st.flags.atp_calls_frequency ^
     ",ordering:" ^ Orderings.ordering_to_string st.flags.ordering ^

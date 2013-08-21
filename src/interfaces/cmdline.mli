@@ -12,7 +12,7 @@ val interactive : bool ref
 val save_tcio : unit -> unit
 
 type filetype = FNone | FDir | FExt of string list
-type argtype = AInt | AStr | AFile of filetype
+type argtype = AInt | AStr | AStrList | AFile of filetype
 (** See type [arginfo]. *)
 
 type arginfo = {

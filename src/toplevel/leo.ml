@@ -412,7 +412,7 @@ let rec process args = match args with
       ignore(State.set_flag_expand_extuni State.state_initialize true);
       process args
   | FOATP s :: args ->
-      global_conf.foatp <- s;
+      global_conf.foatp <- s ^ " " ^ global_conf.foatp;
       process args
   | HELP :: args ->
       help ()

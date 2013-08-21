@@ -1459,7 +1459,7 @@ let cmd_write_original_problem_to_hotptp_file (st:state) _ =
 (*Runs Leo-II's main loop, in between calls to the FO ATP.
   Doesn't return in practice -- it passes along exceptions
   related to proof search*)
-let prove_help (st:state) (prover:string)  (flag:bool) =
+let prove_help (st:state) (provers:string list)  (flag:bool) =
   let unidepth = st.flags.max_uni_depth in
     for unid = unidepth to 1000000000 do
       try
@@ -1468,11 +1468,11 @@ let prove_help (st:state) (prover:string)  (flag:bool) =
         Util.sysout 1 ("[Unidepth=" ^ string_of_int unid ^ "]");
         ignore(pre_process st);
         State.check_timeout ();
-        if flag then call_fo_atp st st.flags.atp_prover;
+        if flag then call_fo_atp st st.flags.atp_provers;
         State.check_timeout ();
         loop st;
         State.check_timeout ();
-        if flag then call_fo_atp st st.flags.atp_prover;
+        if flag then call_fo_atp st st.flags.atp_provers;
         State.check_timeout ();
       with
           EMPTYCLAUSE_DERIVED ->
@@ -1586,13 +1586,16 @@ let state_to_multiple_thf_problems (st:state) =
         conj_clauses_thf_list_with_numbers
   else []
 
-let prove_with_fo_atp (st : state) (prover : string) =
+let prove_with_fo_atp (st : state) (provers : string list) =
+
+  ignore(set_flag_atp_provers st provers);
+
   IFDEF DEBUG THEN
     Util.sysout 0 (summary_stats_string st)
   END;
   (*FIXME not sure why give_it_a_try_with_prover only works
           with a singleton problem_stack*)
-  let give_it_a_try_with_prover (st:state) (prover:string) =
+  let give_it_a_try_with_prover (st:state) (provers:string list) =
     match st.problem_stack with
         [cl] ->
           begin
@@ -1601,14 +1604,14 @@ let prove_with_fo_atp (st : state) (prover : string) =
               Util.sysout 2 (state_to_string st);
               (*prove_help will return with an exception such
                 as EMPTYCLAUSE_DERIVED if anything interesting happens*)
-              if prover = "none" then
+              if provers = [] then
                 begin
-                  prove_help st "" false;
+                  prove_help st [] false;
                   false
                 end
               else
                 begin
-                  prove_help st prover true;
+                  prove_help st provers true;
                   false
                 end
             with
@@ -1701,7 +1704,7 @@ let prove_with_fo_atp (st : state) (prover : string) =
                     IFDEF DEBUG THEN
                       Util.sysout 1 ("\n\n*** Trying Problem: " ^ string_of_int !i ^ " ")
                     END;
-                    let local_success = give_it_a_try_with_prover st prover
+                    let local_success = give_it_a_try_with_prover st provers
                     in
                       if local_success then
                         all_empty_clauses_for_splits := List.hd st.empty_clauses :: !all_empty_clauses_for_splits
@@ -1725,27 +1728,29 @@ let prove_with_fo_atp (st : state) (prover : string) =
 (** Prove *)
 let cmd_prove (st:state) _ =
   if proof_found st then (proof_found_subdialog st; true) else
-    let _ = set_flag_atp_prover st "none" in
+    begin
       Util.start_timer ("Total Reasoning Time ("^st.origproblem_filename^")");
-      let _ = prove_with_fo_atp st "none" in
-	Util.stop_timer ("Total Reasoning Time ("^st.origproblem_filename^")");
-	List.iter (fun (time,proc) -> Printf.printf "\n%.3f: %s" time proc) (get_all_totals_with_atp_times ());
-	Printf.printf "\n";
-	true
-	  
+      ignore(prove_with_fo_atp st []); 
+      Util.stop_timer ("Total Reasoning Time ("^st.origproblem_filename^")");
+      List.iter (fun (time,proc) -> Printf.printf "\n%.3f: %s" time proc) (get_all_totals_with_atp_times ());
+      Printf.printf "\n";
+      true
+    end
+
 (** Prove with FO ATP *)
-let cmd_prove_with_fo_atp (st:state) args =
+let cmd_prove_with_fo_atp (st:state) (args:Cmdline.argdata list) =
   if proof_found st then
-    (proof_found_subdialog st;
-    true)
+    (proof_found_subdialog st; true)
   else
     try
       start_timeout ();
-      let (prover,_) = get_str_arg args in
-      let _ = set_flag_atp_prover st prover in
-                Util.start_timer ("Total Reasoning Time (" ^
-                  st.origproblem_filename^")");
-      let _ = prove_with_fo_atp st st.flags.atp_prover in
+      let provers : string list = List.fold_left
+        (fun provers arg -> (fst (Cmdline.get_str_arg [arg])) :: provers)
+        [] args
+      in
+      Util.start_timer ("Total Reasoning Time (" ^
+                         st.origproblem_filename^")");
+      let _ = prove_with_fo_atp st st.flags.atp_provers in
                 Util.stop_timer ("Total Reasoning Time (" ^
                   st.origproblem_filename^")");
 	    if !Util.debuglevel > 0 then
@@ -1753,7 +1758,7 @@ let cmd_prove_with_fo_atp (st:state) args =
                          Printf.printf "\n%.3f: %s" time proc)
           (get_all_totals_with_atp_times ())
       else
-        ();	    
+        ();
         Printf.printf "\n";
         end_timeout ();
         true
@@ -1825,7 +1830,6 @@ let cmd_write_fo_like_clauses (st:state) _ = (write_fo_like_clauses_subdialog st
 
 (** Prove an Entire Directory *)
 let cmd_prove_directory (st:state) args =
-  let _ = set_flag_atp_prover st "none" in
   let (thfdir,_) = get_file_arg args in
   state_reset st;
   protocol_init ();
@@ -1845,7 +1849,8 @@ let cmd_prove_directory (st:state) args =
 	let _ = init_problem termlist sigma termroles ("file",file_name) st in
 
           Util.start_timer file_name;
-          let _ = prove_with_fo_atp st "none" in
+        (* prove without fo atp *)
+          let _ = prove_with_fo_atp st [] in
             Util.stop_timer file_name;
 	    
 (*	timed (prove st) as file_name; *)
@@ -1892,7 +1897,6 @@ let cmd_prove_directory_with_fo_atp (st:state) args =
   let (prover,args) = get_str_arg args in
   let (thfdir,args) = get_file_arg args in
   state_reset st;
-  let _ = set_flag_atp_prover st prover in
   protocol_init ();
   fo_clauses_init st;
   let success_string = "$\\surd$" and non_success_string = "--" in
@@ -1910,7 +1914,7 @@ let cmd_prove_directory_with_fo_atp (st:state) args =
               start_timeout ();
 	      let _ = init_problem termlist sigma termroles ("file",file_name) st in
 		Util.start_timer file_name;
-		let _ = prove_with_fo_atp st prover in
+		let _ = prove_with_fo_atp st [prover] in
 		  Util.stop_timer file_name;
 		  
 		  (*	  timed (prove_with_fo_atp st prover) as file_name; *)
@@ -2260,7 +2264,7 @@ let cmd_delete_clause (st:state) args =
  let cmd_call_fo_atp (st:state) args =
    try
      let (prover,_) = get_str_arg args in
-     call_fo_atp st prover;
+     call_fo_atp st [prover];
      true
    with
      EMPTYCLAUSE_DERIVED -> true
@@ -2294,7 +2298,7 @@ let cmd_call_fo_atp_early (st:state) args =
  (** Flag set FO ATP *)
  let cmd_flag_set_fo_atp (st:state) args =
    let (prover,_) = get_str_arg args in
-     let _ = set_flag_atp_prover st prover in
+     let _ = set_flag_atp_provers st [prover] in
      Util.sysout 1 ("Flag FOATP set to: "^prover^"\n");
      true
 
@@ -2757,7 +2761,7 @@ let comint_loop (global_state:state) =
       [mkarg ~histcontext:hc_dirs (AFile FDir) "directory with THF files to prove";
        mkarg ~histcontext:hc_atp ~strvalues:fo_atps AStr "FO ATP"], cmd_prove_directory_with_fo_atp global_state);
     ("prove-with-fo-atp", "          - starts automated proof search (supported by a FO ATP)",
-      [mkarg ~histcontext:hc_atp ~strvalues:fo_atps AStr "FO ATP"], cmd_prove_with_fo_atp global_state);
+      [mkarg ~histcontext:hc_atp ~strvalues:fo_atps AStrList "FO ATP"], cmd_prove_with_fo_atp global_state);
     ("read-problem-string", " <str>  - reads a problem string in THF syntax",
       [mkarg ~histcontext:hc_tptpinput AStr "THF problem to read"], cmd_read_problem_string global_state "cmdline");
     ("read-problem-file", " <file>   - reads a problem in THF syntax from a file",

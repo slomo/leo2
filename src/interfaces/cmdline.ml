@@ -10,7 +10,7 @@ open List
 open State
 
 type filetype = FNone | FDir | FExt of string list
-type argtype = AInt | AStr | AFile of filetype
+type argtype = AInt | AStr | AStrList | AFile of filetype
 
 type arginfo = {
   argtype : argtype;
@@ -37,7 +37,7 @@ let history_pos = ref (-1)
 let original_line = ref None
 let empty_newlines = ref true
 let commands = ref []
-let saved_tcio = ref 
+let saved_tcio = ref
    {Unix.c_ignbrk = false; Unix.c_brkint = false; Unix.c_ignpar = false;
     Unix.c_parmrk = false; Unix.c_inpck = false; Unix.c_istrip = false;
     Unix.c_inlcr = false; Unix.c_igncr = false; Unix.c_icrnl = true;
@@ -286,7 +286,14 @@ let expected_arg () =
   if whichword=0 then None else
     let cmd = String.sub !line 0 (String.index !line ' ') in
     match command_get_args cmd with
-        Some(args) -> (try (Some (nth args (whichword-1))) with _ -> None)
+        Some(args) when (List.length args) >= (whichword) ->
+          Some (List.nth args (whichword-1))
+      | Some([]) -> None
+      | Some(args) ->
+          let last = List.hd(List.rev(args)) in
+            if last.argtype == AStrList
+              then Some last
+              else None
       | None -> None
 
 let implode glue pieces =
@@ -523,7 +530,7 @@ let getline ?(expectedtype=None) ?(raise_esc=false) ?(history_context=0) ?(strva
                     let ea=valOf(ea) in
                     match ea.argtype with
                         AFile ft -> complete_filename ~filetype:ft cursorword
-                      | AStr ->
+                      | AStr | AStrList ->
                           if strvalues <> []
                           then complete_str strvalues cursorword
                           else if ea.argstrvalues <> []
@@ -626,7 +633,14 @@ let execute_command s =
             | AFile _ ->
                 arguments := FileArg g :: !arguments;
                 add_to_history e.arghistcontext g;
-                fill_args gr er in
+                fill_args gr er
+            | AStrList ->
+                arguments := StrArg g :: !arguments;
+                add_to_history e.arghistcontext g;
+                match gr with
+                    [] -> fill_args gr er
+                  | _ -> fill_args gr (e::er)
+  in
     try
       fill_args (tl words) args;
       func !arguments

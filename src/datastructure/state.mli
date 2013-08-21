@@ -74,7 +74,7 @@ type flags = {
     mutable pretty_print_only : bool;
     mutable fo_translation : string;
     mutable atp_calls_frequency : int;
-    mutable atp_prover : string;
+    mutable atp_provers : string list;
     mutable atp_timeout : int;
     mutable proof_output : int;
     mutable prim_subst : int;
@@ -215,7 +215,7 @@ val set_flag_fo_translation : state -> string -> string
 
 val set_flag_atp_calls_frequency : state -> int -> int
 
-val set_flag_atp_prover : state -> string -> string
+val set_flag_atp_provers: state -> string list -> string list
 
 val set_flag_atp_timeout : state -> int -> int
 
