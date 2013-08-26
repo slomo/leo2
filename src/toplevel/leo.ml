@@ -28,6 +28,7 @@ type arg =
   | ATP of string
   | ATPRC of string
   | ATPTIMEOUT of int
+  | ATPJOBS of int
   | DEBUG of int
   | DIR of string
   | EXPAND_EXTUNI
@@ -64,13 +65,14 @@ let help () = print_string ("\
                                 (overrides the .leoatprc file, option can be used repeatedly)\n \
      --atprc FILE               Set ATP config file\n \
      --atptimeout N, -at N      Set the ATPtimeout (calls to E) to N seconds\n \
+     --atpjobs N, -aj N         Set how many ATPs are executed in paralell \
                                 Default: 30s sec\n \
      --debug N, -D N            Set debug level to N\n \
                                 (0 = no output, 1 = minimal output, 2 = full output)\n \
                                 Default: 0\n \
      --dir DIR, -d DIR          Run on all files in DIR\n \
      --expand_extuni            Provide detailed unification inferences. \n \
-     --foatp PROVER, -f PROVER  Select PROVER as first-order prover\n\tCurrently supported: " ^
+     --foatp P[,P]*, -f P[,P*]  Select P* as first-order provers\n\tCurrently supported: " ^
                               String.concat ", " Automation.supported_atps ^ "\n\tDefault: " ^ global_conf.foatp ^ "\n \
      --help, -h                 Display this help screen and exit\n \
      --interactive, -i          Start interactive mode\n \
@@ -137,6 +139,9 @@ let rec parse_cl cs ps =
     | "-at" :: xs
     | "--atptimeout" :: xs ->
         parse_cl (tl xs) (ATPTIMEOUT (get_cl_int (hd cs) xs) :: ps)
+    | "-aj" :: xs
+    | "--atpjobs" :: xs ->
+        parse_cl (tl xs) (ATPJOBS (get_cl_int (hd cs) xs) :: ps)
     | "-D" :: xs
     | "--debug" :: xs ->
         parse_cl (tl xs) (DEBUG (get_cl_int (hd cs) xs) :: ps)
@@ -399,6 +404,9 @@ let rec process args = match args with
       global_conf.atp_timeout_forced <- Some n;
       ignore(State.set_flag_atp_timeout State.state_initialize (max 5 n));
       process args
+  | ATPJOBS n :: args ->
+      ignore(State.set_flag_atp_jobs State.state_initialize n);
+      process args
   | DEBUG n :: args ->
       global_conf.debug <- n;
       Util.debuglevel := n;
@@ -410,7 +418,9 @@ let rec process args = match args with
       ignore(State.set_flag_expand_extuni State.state_initialize true);
       process args
   | FOATP s :: args ->
-      global_conf.foatp <- s ^ " " ^ global_conf.foatp;
+      global_conf.foatp <-
+        (* parse csv array, remove leading and trailing whitespaces, store whitespace sperated *)
+        String.concat " " (List.map String.trim  (Str.split (Str.regexp ",") s));
       process args
   | HELP :: args ->
       help ()
@@ -466,7 +476,7 @@ let rec process args = match args with
       (*ATP applied for between 1 and 25 seconds. The exact value is at most 30% of the global timeout
         if the sequence instructions (related to -t and -ns) are followed*)
       (*FIXME update atptmo when global_conf.time_slices is updated?*)
-      let atptmo = (min 25 (max 1 (n / (global_conf.time_slices + 2)))) in 
+      let atptmo = (min 25 (max 1 (n / (global_conf.time_slices + 2)))) in
       (*Timeout for each slice? Assumes each strategy is given an equal amount of time*)
       let localtmo = (max 1 (n / global_conf.time_slices)) in
        global_conf.global_timeout <- globaltmo; (*used to scale time slices for each schedule*)

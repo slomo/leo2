@@ -128,7 +128,7 @@ let hc_atp       = 4
 let hc_dirs      = 5
 let hc_fo_translations = 6
 
-let fo_atps = ["e";"spass"]
+let fo_atps = Automation.supported_atps
 
 let fo_translations = List.map Translation_general.print_translation Translation_general.fo_translations
 
@@ -1730,7 +1730,7 @@ let cmd_prove (st:state) _ =
   if proof_found st then (proof_found_subdialog st; true) else
     begin
       Util.start_timer ("Total Reasoning Time ("^st.origproblem_filename^")");
-      ignore(prove_with_fo_atp st []); 
+      ignore(prove_with_fo_atp st []);
       Util.stop_timer ("Total Reasoning Time ("^st.origproblem_filename^")");
       List.iter (fun (time,proc) -> Printf.printf "\n%.3f: %s" time proc) (get_all_totals_with_atp_times ());
       Printf.printf "\n";
@@ -1746,9 +1746,11 @@ let cmd_prove_with_fo_atp (st:state) (args:Cmdline.argdata list) =
     try
       start_timeout ();
       let provers : string list = List.fold_left
-        (fun provers arg -> (fst (Cmdline.get_str_arg [arg])) :: provers)
-        [] args
+          (fun provers arg -> (fst (Cmdline.get_str_arg [arg])) :: provers)
+          [] args
       in
+      let provers = if provers == ["none"] then [] else provers in
+
       Util.start_timer ("Total Reasoning Time (" ^
                          st.origproblem_filename^")");
       let _ = prove_with_fo_atp st provers in

@@ -550,6 +550,10 @@ let set_flag_atp_timeout (ls : state) (i : int) =
   ls.flags.atp_timeout <- i;
   i
 
+let set_flag_atp_jobs (ls : state) (i : int) =
+  ls.flags.atp_jobs <- i;
+  i
+
 let set_flag_proof_output (ls : state) (level : int) =
   ls.flags.proof_output <- level;
   level
@@ -622,6 +626,7 @@ let summary_stats_string st =
     ",expand_extuni:" ^ string_of_bool st.flags.expand_extuni ^
     ",foatps:" ^ String.concat " " st.flags.atp_provers ^
     ",atp_timeout:" ^ string_of_int st.flags.atp_timeout ^
+    ",atp_jobs:" ^ string_of_int st.flags.atp_jobs ^
     ",atp_calls_frequency:" ^ string_of_int st.flags.atp_calls_frequency ^
     ",ordering:" ^ Orderings.ordering_to_string st.flags.ordering ^
     ",proof_output:" ^ string_of_int st.flags.proof_output ^

@@ -220,6 +220,8 @@ val set_flag_atp_provers: state -> string list -> string list
 
 val set_flag_atp_timeout : state -> int -> int
 
+val set_flag_atp_jobs : state -> int -> int
+
 val set_flag_proof_output : state -> int -> int
 
 val set_flag_prim_subst : state -> int -> int

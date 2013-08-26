@@ -221,7 +221,15 @@ let default_subprovers = [
         options = [
           "-TPTP"; "-PGiven=0"; "-PProblem=0";
         "-DocProof"; "-TimeLimit=10"]
-      })
+      });
+  ( "none",
+    fun () -> {
+      sp_type = Folprover;
+      path = "/bin/true";
+      name = "none";
+      options = []
+    })
+
 ]
 ;;
 
@@ -390,7 +398,6 @@ let collect_solution (st:State.state) : (bool * string list * string) =
 
 let submit_problem (st:State.state) : unit =
   let fo_clauses:string = Main.get_fo_clauses st in
-  print_string "submitted";
   with_ref_do sp_controller (add_problem fo_clauses) st
 ;;
 
