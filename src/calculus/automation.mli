@@ -34,19 +34,13 @@ val unify_pre_ext_old : cl_clause -> state -> cl_clause list
 
 val supported_atps : string list
 
-val atp_versions : unit -> unit
-
 val get_atp_times : unit -> (float * string) list
 
-val call_fo_atp : state -> string -> unit
+val call_fo_atp : state -> string list -> unit
 
 val call_fo_atp_early : state -> string -> unit
 
 val atp_config_file : string ref
-
-val atp_configured : bool ref
-
-val atp_cmds : (string * string) list ref
 
 (** {6 Complete Pre-Processing of the Problem State} *)
 

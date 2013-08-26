@@ -76,6 +76,7 @@ type flags = {
     mutable atp_calls_frequency : int;
     mutable atp_provers : string list;
     mutable atp_timeout : int;
+    mutable atp_jobs : int;
     mutable proof_output : int;
     mutable prim_subst : int;
     mutable unfold_defs_early : bool;

@@ -1739,6 +1739,7 @@ let cmd_prove (st:state) _ =
 
 (** Prove with FO ATP *)
 let cmd_prove_with_fo_atp (st:state) (args:Cmdline.argdata list) =
+
   if proof_found st then
     (proof_found_subdialog st; true)
   else
@@ -1750,7 +1751,7 @@ let cmd_prove_with_fo_atp (st:state) (args:Cmdline.argdata list) =
       in
       Util.start_timer ("Total Reasoning Time (" ^
                          st.origproblem_filename^")");
-      let _ = prove_with_fo_atp st st.flags.atp_provers in
+      let _ = prove_with_fo_atp st provers in
                 Util.stop_timer ("Total Reasoning Time (" ^
                   st.origproblem_filename^")");
 	    if !Util.debuglevel > 0 then
@@ -2287,13 +2288,12 @@ let cmd_call_fo_atp_early (st:state) args =
    with
        EMPTYCLAUSE_DERIVED ->
 	 (* proof_found_subdialog st; *)
-	 problems_solved_subdialog st; 
+	 problems_solved_subdialog st;
 	 if (st.flags.proof_output > 0) then print_derivation_tstp (st.clause_count,"") st else ();
 	 true
      | Failure s ->
 	 Util.sysout 1 (s^"\n* Try again.\n");
 	 false
-	   
 
  (** Flag set FO ATP *)
  let cmd_flag_set_fo_atp (st:state) args =

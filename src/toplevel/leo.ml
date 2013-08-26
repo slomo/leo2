@@ -19,8 +19,8 @@ END
 
 let version () =
   print_endline ("LEO-II version v1.6.1 " ^ rev ^ " \
-  (compiled on " ^ Sys.os_type ^ " with OCaml-" ^ Sys.ocaml_version ^ ")");
-  if State.state_initialize.flags.verbose then Automation.atp_versions ()
+  (compiled on " ^ Sys.os_type ^ " with OCaml-" ^ Sys.ocaml_version ^ ")")
+(*  if State.state_initialize.flags.verbose then Automation.atp_versions () *)
 
 type arg =
   | FILENAME of string (*name of file to process*)
@@ -386,11 +386,9 @@ let rec process args = match args with
       let len = String.length s in
       let atp = String.sub s 0 eqpos in
       let executable = String.sub s (eqpos + 1) (len - eqpos - 1) in
-      (* print_string ("ATP: "^atp^", exec: "^executable^"\n"); *)
-      if Sys.file_exists executable 
+      if Sys.file_exists executable
       then
-	( Automation.atp_cmds := (atp, executable) :: !Automation.atp_cmds;
-	  Automation.atp_configured := true;
+	( Subprover.executable_paths := (atp, executable) :: !Subprover.executable_paths;
 	  Util.sysout 1 ("  Configured: " ^ atp ^ " = " ^ executable ^ "\n");
 	);
 	process args
