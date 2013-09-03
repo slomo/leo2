@@ -54,6 +54,7 @@ type subprover = {
   path: string; (* abs or rel path to executable *)
   name: string; (* humanreadale name of the prover *)
   options : string list; (* list of standard options *)
+  debug: bool
 };;
 
 let string_of_prover (prover:subprover) : string =
@@ -65,8 +66,6 @@ type subprover_run = {
   subprover: subprover;
   pid: int;
   channels: out_channel * in_channel;
-  killed: bool;
-  value: int;
 };;
 
 let string_of_run (run:subprover_run) = match run with
@@ -100,8 +99,6 @@ let string_of_controller (controller:controller) = match controller with
     "  results: " ^ String.concat "\n           " (List.map string_of_result finished)  ^ "}"
 ;;
 
-
-
 exception Subprover_failed
 
 (**
@@ -113,12 +110,12 @@ let start (prover : subprover) (input : string) : subprover_run =
      results in a pipe with infinit buffer, which might get slow if
      the disk cache is running full *)
   let file_pipe () =
-    let tmp_file = "/tmp/leo_file_pipe" in
+    let tmp_file = "./leo_file_pipe" in
     let write_end = Unix.openfile tmp_file
       [ Unix.O_CREAT; Unix.O_WRONLY; Unix.O_TRUNC ] 0o600 in
     let read_end = Unix.openfile tmp_file
       [ Unix.O_RDONLY ] 0o006 in
-    Unix.unlink (tmp_file);
+    if not prover.debug then Unix.unlink (tmp_file);
     (read_end, write_end)
   in
 
@@ -139,13 +136,28 @@ let start (prover : subprover) (input : string) : subprover_run =
 
     (* set argv[0] for subprover *)
     let args = cmd :: args in
-    {
-      subprover =  prover;
-      pid = Unix.create_process cmd (Array.of_list args) from_caller to_caller Unix.stderr;
-      channels = ( out_chan, in_chan );
-      killed = false;
-      value = 0;
-    }
+    let prover_run =
+      {
+        subprover =  prover;
+        pid = Unix.create_process cmd (Array.of_list args) from_caller to_caller Unix.stderr;
+        channels = ( out_chan, in_chan );
+      }
+    in
+
+    (* post start handle debugging *)
+    if prover.debug then
+      begin
+        let fdin = Unix.openfile ( prover.name ^ "." ^ string_of_int prover_run.pid ^ ".in" )
+          [ Unix.O_CREAT; Unix.O_WRONLY; Unix.O_TRUNC ] 0o600 in
+        let outchan = Unix.out_channel_of_descr fdin in
+        output_string outchan input;
+        flush outchan;
+        close_out outchan;
+        Unix.rename
+          "./leo_file_pipe"
+          ( prover.name ^ "." ^ string_of_int prover_run.pid ^ ".out")
+      end;
+    prover_run
 ;;
 
 
@@ -203,34 +215,42 @@ let get_subprover_path atp =
     (* FIXME: add function for unrecoverable errors *)
 ;;
 
-let default_subprovers = [
-  ( "e",
-    fun () ->
-      { sp_type = Folprover;
-        path = get_subprover_path("e");
-        name = "E";
-        options = [
-          "-xAuto"; "-tAuto"; "--memory-limit=Auto";
-          "--tptp3-format"; "--cpu-limit=10"]
-      });
-  ( "spass",
-    fun () ->
-      { sp_type = Folprover;
-        path = get_subprover_path("spass");
-        name = "SPASS";
-        options = [
-          "-TPTP"; "-PGiven=0"; "-PProblem=0";
-        "-DocProof"; "-TimeLimit=10"]
-      });
-  ( "none",
-    fun () -> {
-      sp_type = Folprover;
-      path = "/bin/true";
-      name = "none";
-      options = []
-    })
+let default_subprovers =
+  let construct_e debug = fun () ->
+    { sp_type = Folprover;
+      path = get_subprover_path("e");
+      name = "E";
+      options = [
+        "-xAuto"; "-tAuto"; "--memory-limit=Auto";
+        "--tptp3-format"; "--cpu-limit=10"; "-l 4"];
+      debug = debug
+    }
 
-]
+  in
+
+  [
+    ( "e", construct_e false);
+    ( "e_debug", construct_e true);
+    ( "spass",
+      fun () ->
+        { sp_type = Folprover;
+          path = get_subprover_path("spass");
+          name = "SPASS";
+          options = [
+            "-TPTP"; "-PGiven=0"; "-PProblem=0";
+            "-DocProof"; "-TimeLimit=10"];
+          debug = false;
+        });
+    ( "none",
+      fun () -> {
+        sp_type = Folprover;
+        path = "/bin/true";
+        name = "none";
+        options = [];
+        debug = false;
+      })
+
+  ]
 ;;
 
 

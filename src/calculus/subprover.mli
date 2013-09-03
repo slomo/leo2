@@ -6,14 +6,13 @@ type subprover = {
   path : string;
   name : string;
   options : string list;
+  debug : bool;
 }
 val string_of_prover : subprover -> string
 type subprover_run = {
   subprover : subprover;
   pid : int;
   channels : out_channel * in_channel;
-  killed : bool;
-  value : int;
 }
 val string_of_run : subprover_run -> string
 type subprover_result = {
