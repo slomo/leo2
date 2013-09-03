@@ -270,6 +270,7 @@ let rec term_to_appterm ((tr, _)  as cfg : Translation_general.configuration) no
                             let s' =
                               (* Counter the renaming done by offset_constnames *)
                               if List.mem s (special_symbols @ proxies @ Signature.interpreted_constants) then s
+                              else if String.get s 0 == '\'' then s
                               else String.sub s 1 (String.length s - 1)
                             in Termsystem.type_of (Termsystem.term2xterm (Symbol s'))
                         with

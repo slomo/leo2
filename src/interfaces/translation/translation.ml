@@ -757,14 +757,16 @@ let rec tag_app_term (cfg : Translation_general.configuration) (d : decoration_p
 
 (*Rename constant names, prefixing them with prefix_const.
   This avoids clashes in case a problem contains constants with same name
-  as proxy names, for example.*)
+  as proxy names, for example. Constant that are quoted (using ') are left
+  as they are since no clashes with proxie name is exepected.  *)
+
 (*FIXME not tail recursive*)
 let rec offset_constnames t =
   match t with
       Symbol s ->
         let s' =
           if Translation_general.is_variable s || List.mem s Signature.interpreted_constants then s
-          else prefix_const ^ s
+          else (if String.get s 0 == '\'' then s else prefix_const ^ s)
         in Symbol s'
     | Appl (t1, t2) -> Appl (offset_constnames t1, offset_constnames t2)
     | Abstr (ts, ty, t') -> Abstr (ts, ty, offset_constnames t')
