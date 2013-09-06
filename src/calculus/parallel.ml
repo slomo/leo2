@@ -1,3 +1,5 @@
+open Subprover
+
 (*
    Implements subprovers and thier execution.
    @author Yves Müller
@@ -29,82 +31,25 @@
 
 *)
 
-let (|-) f g = fun (x) -> f (g x);;
 
-(** Modles the various types of subprover:
-    {ul
-    {- Modelfinder }
-    {- First Order Prover (E, Vampire ... ) }
-    {- Incremental ( Z3 ) }
-    ul}
+(** helpers *)
 
-*)
-type subprover_type = Modelfinder | Folprover | Incremental ;;
-
-let string_of_kind (kind:subprover_type) = match kind with
-  | Folprover -> "atp"
-  | Modelfinder -> "mf"
-  | Incremental -> "itp"
+let rec read_until f fallback channel =  
+  try
+    let line = input_line channel in
+    match f line with
+    | Some value -> (value, [line])
+    | None ->
+      let (value, fragments) = read_until f fallback channel in
+      (value, line::fragments)
+  with
+  | End_of_file -> (fallback, [])
 ;;
-
-
-(** Instances of that type a concrete subprovers. *)
-type subprover = {
-  sp_type: subprover_type;
-  path: string; (* abs or rel path to executable *)
-  name: string; (* humanreadale name of the prover *)
-  options : string list; (* list of standard options *)
-  debug: bool
-};;
-
-let string_of_prover (prover:subprover) : string =
-  prover.path ^ "[" ^ string_of_kind prover.sp_type ^ "]"
-;;
-
-(** Every call to a subprover results in a subprover run. *)
-type subprover_run = {
-  subprover: subprover;
-  pid: int;
-  channels: out_channel * in_channel;
-};;
-
-let string_of_run (run:subprover_run) = match run with
-  | { subprover =  prover; pid = pid } ->
-   string_of_prover(prover) ^ "@" ^ string_of_int pid
-;;
-
-type subprover_result = {
-  channel: in_channel;
-  fragments: string list;
-  szs: Szs.status
-}
-
-let string_of_result ({szs= szs}:subprover_result) =
-  "result(" ^ Szs.string_of_szs szs ^ ")"
-
-type controller = {
-  max_parrallel: int;
-  provers:  subprover list;
-  running: subprover_run list;
-  waiting: ( string * subprover) list;
-  results: subprover_result list;
-};;
-
-let string_of_controller (controller:controller) = match controller with
-  | { max_parrallel = mp; provers = provers;
-      running = running; waiting =  waiting;
-      results = finished } ->
-    "{ running: " ^ String.concat "\n           " (List.map string_of_run running) ^ "\n" ^
-    "  waiting: " ^ String.concat "\n           " (List.map (string_of_prover |- snd) waiting) ^ "\n" ^
-    "  results: " ^ String.concat "\n           " (List.map string_of_result finished)  ^ "}"
-;;
-
-exception Subprover_failed
 
 (**
    Lowlevel function to start a subprover on a given input string.
 *)
-let start (prover : subprover) (input : string) : subprover_run =
+let start (prover : subprover) (input : string) : run =
 
   (* This creates a pipe backed, through an non existing file. This
      results in a pipe with infinit buffer, which might get slow if
@@ -164,33 +109,28 @@ let start (prover : subprover) (input : string) : subprover_run =
 let kill pr = Unix.kill pr.pid Sys.sigterm ;;
 
 (** transform a run to a result *)
-let result_from_run (pr:subprover_run) (status:Unix.process_status) : subprover_result =
+let result_from_run (pr:run) (status:Unix.process_status) : result =
 
   (* fixme: this is not tail recursiv *)
-  let rec read_until_szs(channel: in_channel) =
-    try
-      let line = input_line channel in
-      match Szs.read_status line with
-      | Some szs_status -> ([line], szs_status)
-      | None -> let (fragments, status) = read_until_szs(channel) in
-                (line::fragments, status)
-    with
-    | End_of_file -> ([],Szs.ERR)
+  let read_until_szs(channel: in_channel) =
+    read_until Szs.read_status Szs.ERR channel 
   in
 
   (* fixme: generate proof if requested *)
   (* check if run was successfull *)
 
   let error = {
-      channel = snd pr.channels;
-      fragments = [];
-      szs = Szs.ERR
+    from = pr.subprover;
+    channel = snd pr.channels;
+    fragments = [];
+    szs = Szs.ERR
   } in
 
   match status with
   | Unix.WEXITED n when n == 0 ->
-    let (fragments,szs) = read_until_szs (snd pr.channels) in
+    let (szs, fragments) = read_until_szs (snd pr.channels) in
     {
+      from = pr.subprover;
       channel = snd pr.channels;
       fragments = fragments;
       szs = szs
@@ -201,58 +141,110 @@ let result_from_run (pr:subprover_run) (status:Unix.process_status) : subprover_
 ;;
 
 
-let executable_paths = ref []
-;;
 
+(* Handling of binary paths *)
+let executable_paths :  (string * string) list ref = ref [];;
 
-let get_subprover_path atp =
+let get_subprover_path (atp:string) : string =
   try
     List.assoc atp !executable_paths
   with
   | Not_found ->
     ( print_string ("unable to find path for prover \"" ^ atp ^ "\"");
       exit 1)
-    (* FIXME: add function for unrecoverable errors *)
+(* FIXME: add function for unrecoverable errors *)
 ;;
 
-let default_subprovers =
-  let construct_e debug = fun () ->
-    { sp_type = Folprover;
-      path = get_subprover_path("e");
-      name = "E";
-      options = [
-        "-xAuto"; "-tAuto"; "--memory-limit=Auto";
-        "--tptp3-format"; "--cpu-limit=10"; "-l 4"];
-      debug = debug
-    }
 
+(* from here on subprover speific code *)
+
+
+let default_subprovers =
+
+  let e_init (st:State.state) (name:string) : subprover =
+    {
+      sp_type = Folprover;
+      path = get_subprover_path("e");
+      name = name;
+      options = [
+        "-xAuto";
+        "-tAuto";
+        "--memory-limit=Auto";
+        "--tptp3-format";
+          (* limit execution time FIXME: might be seensless *)
+        "--cpu-limit=" ^ string_of_int st.State.flags.State.atp_timeout; 
+          (* only output proof if needed *)
+        "-l " ^ if st.State.flags.State.proof_output > 1 then "4" else "0" 
+      ];
+      debug = name == "e_debug"
+    }
   in
 
+  let e_proof (lines:string list) =
+    
+    let comment_prefix = '#' in
+    let regex = Str.regexp
+      "^\\(cnf\\|fof\\)(\\(.*\\),\\(.*\\),\\(.*\\)\\(,\\(.*\\)\\)?)\\.$"
+    in
+    
+      (* filter empty lines *)
+    let formula_lines = List.filter 
+      (fun line -> String.get line 0 != comment_prefix && String.length line > 0)
+      lines
+    in
+
+      (* fof or cnf * name * role * logical formel * source * usefull info (optinal) *)
+    let tuples : (string * string * string * string * string option) list =
+      List.map
+        (fun line ->
+          ignore(Str.string_match regex line 0);
+          (
+            Str.matched_group 1 line,
+            Str.matched_group 2 line,
+            Str.matched_group 3 line,
+            Str.matched_group 4 line,
+            try  Some (Str.matched_group 6 line)
+            with Not_found -> None
+          )
+        )
+        formula_lines
+    in
+    print_string(
+      String.concat "\n" (
+        List.map (fun (a,b,_,d,_) -> String.concat "\t" [a;b;d]  )  tuples
+      )
+    );
+    (0,"")
+    
+  in
+
+  let dummy_proof a = (0,"") in
+
   [
-    ( "e", construct_e false);
-    ( "e_debug", construct_e true);
-    ( "spass",
-      fun () ->
-        { sp_type = Folprover;
-          path = get_subprover_path("spass");
-          name = "SPASS";
-          options = [
-            "-TPTP"; "-PGiven=0"; "-PProblem=0";
-            "-DocProof"; "-TimeLimit=10"];
-          debug = false;
-        });
-    ( "none",
-      fun () -> {
+    ("e", (
+       e_init, e_proof));
+    ("e_debug", (
+       e_init, e_proof));
+    ("spass", (
+      (fun st name -> {
+        sp_type = Folprover;
+        path = get_subprover_path("spass");
+        name = "SPASS";
+        options = [
+          "-TPTP"; "-PGiven=0"; "-PProblem=0";
+          "-DocProof"; "-TimeLimit=10"];
+        debug = false;
+      }), dummy_proof));
+    ("none", (
+      (fun st name -> {
         sp_type = Folprover;
         path = "/bin/true";
         name = "none";
         options = [];
         debug = false;
-      })
-
+      }), dummy_proof))
   ]
 ;;
-
 
 (** {3 High-Level API } *)
 
@@ -266,7 +258,7 @@ let init (st: State.state) =
 
   let (provers: subprover list) = List.map
       (fun (prover_name) ->
-        (List.assoc prover_name default_subprovers)()
+        (fst (List.assoc prover_name default_subprovers)) st prover_name
       )
       st.State.flags.State.atp_provers
   in
@@ -283,19 +275,22 @@ let init (st: State.state) =
   sc
 ;;
 
-
-(* FIXME: move to state *)
-let sp_controller:controller option ref = ref None;;
+let bind (f : controller -> controller) st =
+  let obj = match st.State.subprover_controller with
+    | None -> init st
+    | Some controller -> controller
+  in
+  st.State.subprover_controller <- Some (f obj)
+;;
 
 let perform_update sc =
-
+  (** Tests if any subprocess has terminated  *)
   let rec poll_terminations () =
     try
-      let (return_pid, status) = Unix.waitpid [Unix.WNOHANG] (-1) in
-      if return_pid == 0 (* no child as returned *)
-      then []
-      else (return_pid, status) :: (poll_terminations ())
-    with
+      let (pid, status) = Unix.waitpid [Unix.WNOHANG] (-1) in
+      if pid == 0 then [] (* no child returned *)
+      else (pid, status) :: poll_terminations ()
+    with (* when no process has been started an exception is raised *)
       Unix.Unix_error (Unix.ECHILD,_,_) -> []
   in
 
@@ -303,9 +298,9 @@ let perform_update sc =
     datastructure *)
   let handle_termination pid status (sc:controller) =
     let now_finished = List.find
-      (fun ({pid = thisPid}) -> pid == thisPid) sc.running in
+      (fun run -> pid == run.pid) sc.running in
     let still_running = List.filter
-      (fun ({pid = thisPid}) -> pid != thisPid) sc.running in
+      (fun run -> pid != run.pid) sc.running in
     { sc with
       running = still_running;
       results = (result_from_run now_finished status) :: sc.results
@@ -342,17 +337,9 @@ let perform_update sc =
       (fun (pid,status) sc -> handle_termination pid status sc)
       (terminated) sc
   )
-
 ;;
 
 (** helpers *)
-let with_ref_do (refa :  controller option ref) (f : controller -> controller) (st : State.state) : unit =
-  let obj = match !refa with
-    | None -> init st
-    | Some controller -> controller
-  in
-  refa := Some (f obj)
-;;
 
 let add_problem (fo_clauses:string) : controller -> controller =
   fun (sp_con) ->
@@ -361,15 +348,11 @@ let add_problem (fo_clauses:string) : controller -> controller =
       sp_con.provers in
     { sp_con with waiting = waiting } ;;
 
-let get_solutions (sc:controller) : controller * subprover_result list =
-
+let get_solutions (sc:controller) : controller * result list =
   (* remove all unsucessfull *)
   let successfull = List.filter
-    (fun (pr) -> match pr with
-    | {szs = szs} ->
-      Szs.is_a Szs.UNS szs)
+    (fun run -> Szs.is_a Szs.UNS run.szs)
     sc.results in
-
   ({sc with results = []}, successfull)
 ;;
 
@@ -386,19 +369,35 @@ let get_solutions (sc:controller) : controller * subprover_result list =
 *)
 (** api functions *)
 
+(** This function can be used to collect results of subprovers 
+
+    @return information wether proof was succefull and used clauses
+
+*)
 let collect_solution (st:State.state) : (bool * string list * string) =
-  let results =
-    match !sp_controller with
-    | Some sc ->
-      let (sc, results) = get_solutions sc  in
-      sp_controller := Some sc;
-      results
-    | _ ->
-      []
+
+  let generate_proof result =
+    let handler = (snd (List.assoc result.from.name default_subprovers)) in
+    let (_, output) = read_until (fun _ -> None) () result.channel in
+    let output = output @ results.fragments in
+    handler output
   in
-  if (List.length results) >= 0
-  then (false, [], "")
-  else (true, [], "")
+
+  match st.State.subprover_controller with
+  | Some sc ->
+    (* get sucessfull results *)
+    let (sc, results) = get_solutions sc  in
+    st.State.subprover_controller <- Some sc;
+    
+    if results != [] then (* proof found *)
+      if st.flags.proof_output > 1 then (* give porve *)
+        generate proof (List.hd results) 
+      else (true, [], "") (* proof with out evidence *)
+      else (false, [], "") (* no proof found *)
+          
+  (* no subprover has been started yet *)
+  | None ->
+    (false, [])
 ;;
 
 
@@ -418,19 +417,15 @@ let collect_solution (st:State.state) : (bool * string list * string) =
 
 let submit_problem (st:State.state) : unit =
   let fo_clauses:string = Main.get_fo_clauses st in
-  with_ref_do sp_controller (add_problem fo_clauses) st
+  bind (add_problem fo_clauses) st
 ;;
 
 let tick (st:State.state) =
-  with_ref_do sp_controller perform_update st
+  bind perform_update st
 ;;
 
-(*let tick_final (st:State.state) =
-   with_ref_do sp_controller kill_all_provers
-;;*)
-
 let debug (st) =
-  with_ref_do sp_controller (fun (sc) -> print_string (string_of_controller sc); sc) st
+  bind (fun (sc) -> print_string (string_of_controller sc); sc) st
 ;;
 
 let detect_cpu_count () =
@@ -441,4 +436,3 @@ let detect_cpu_count () =
   with
   | e -> 1
 ;;
-

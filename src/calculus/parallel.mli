@@ -1,0 +1,20 @@
+open Subprover
+open State
+
+val executable_paths : (string * string) list ref
+val start : subprover -> string -> run
+val kill : run -> unit
+val result_from_run :
+  run -> Unix.process_status -> result
+
+val default_subprovers : 
+  (string * 
+     ( (state -> string -> subprover) *
+         (string list -> int * string))) list
+
+
+val collect_solution : state -> bool * string list * string
+val submit_problem : state -> unit
+val tick : state -> unit
+val debug : state -> unit
+val detect_cpu_count : unit -> int
