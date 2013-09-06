@@ -400,7 +400,7 @@ let remote_atp_call atp_name system_on_tptp_name success_string force (st : stat
 *)
 
 
-let supported_atps = List.map fst Subprover.default_subprovers ;;
+let supported_atps = List.map fst Parallel.default_subprovers ;;
 
 (*let get_atp_main prover = try List.assoc prover atp_mains with
      Not_found -> raise (Failure ("There is no ATP named " ^ prover ^ ".\n" ^
@@ -477,7 +477,7 @@ let supported_atps = List.map fst Subprover.default_subprovers ;;
 
        (* if there are new fo-formulars add them *)
      if not !Translation.next_atp_call_is_redundant then
-       Subprover.submit_problem st;
+       Parallel.submit_problem st;
 
      let (result, used_clauses, protocol) =
 
@@ -485,12 +485,12 @@ let supported_atps = List.map fst Subprover.default_subprovers ;;
        print_string "\n<< pre <<<<<<<<<<\n";
        Subprover.debug st;
        print_string "\n>>>>>>>>>>>>>>>>>\n";
-       *) Subprover.tick st; (*
+       *) Parallel.tick st; (*
        print_string "\n<< post <<<<<<<<<\n";
        Subprover.debug st;
        print_string "\n>>>>>>>>>>>>>>>>>\n"; *)
 
-       Subprover.collect_solution st
+       Parallel.collect_solution st
 
        (*                 memorize_execution_time st.origproblem_filename
                           "atp" st.loop_count apply_prover st *)

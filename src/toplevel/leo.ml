@@ -393,7 +393,7 @@ let rec process args = match args with
       let executable = String.sub s (eqpos + 1) (len - eqpos - 1) in
       if Sys.file_exists executable
       then
-	( Subprover.executable_paths := (atp, executable) :: !Subprover.executable_paths;
+	( Parallel.executable_paths := (atp, executable) :: !Parallel.executable_paths;
 	  Util.sysout 1 ("  Configured: " ^ atp ^ " = " ^ executable ^ "\n");
 	);
 	process args

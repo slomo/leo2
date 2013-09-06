@@ -65,10 +65,12 @@ let find_and_remove_clause_by_number_in_passive (st:state) (i:int) =
 
 type protocol = int * (string * (int * string) list * string) * string
 
-let protocol = ref [(-1,("",[],""),"\n**** Beginning of proof protocol ****")]
+let empty_protocol = [(-1,("",[],""),"\n**** Beginning of proof protocol ****")]
+
+let protocol = ref empty_protocol
 
 let protocol_init () = 
-  protocol := [(-1,("",[],""),"\n**** Beginning of proof protocol ****")];
+  protocol := empty_protocol;
   ()
 
 let protocol_to_string (p:protocol) =

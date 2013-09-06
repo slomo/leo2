@@ -118,6 +118,7 @@ type state = {
     mutable foatp_calls : int;
     mutable choice_functions : Term.term list;
     mutable flags : flags;
+    mutable subprover_controller : Subprover.controller option;
   }
 
 
