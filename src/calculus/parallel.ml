@@ -1,4 +1,5 @@
-open Subprover
+(* parrallel part *)
+
 
 (*
    Implements subprovers and thier execution.
@@ -31,6 +32,8 @@ open Subprover
 
 *)
 
+open Subprover
+
 
 (** helpers *)
 
@@ -49,7 +52,7 @@ let rec read_until f fallback channel =
 (**
    Lowlevel function to start a subprover on a given input string.
 *)
-let start (prover : subprover) (input : string) : run =
+let start (prover: subprover) (inputId: int) (input: string) : run =
 
   (* This creates a pipe backed, through an non existing file. This
      results in a pipe with infinit buffer, which might get slow if
@@ -83,6 +86,7 @@ let start (prover : subprover) (input : string) : run =
     let args = cmd :: args in
     let prover_run =
       {
+        inputId = inputId;
         subprover =  prover;
         pid = Unix.create_process cmd (Array.of_list args) from_caller to_caller Unix.stderr;
         channels = ( out_chan, in_chan );
@@ -105,8 +109,18 @@ let start (prover : subprover) (input : string) : run =
     prover_run
 ;;
 
+(** kill a prover run
+ *
+ *  May be applied to any prover run, regardless wether the encapsulated process
+ *  has already finished or not. It does not check, if the prover has really
+ *  finished.
+ *)
 
-let kill pr = Unix.kill pr.pid Sys.sigterm ;;
+let kill pr =
+  try Unix.kill pr.pid Sys.sigterm; pr
+  with
+      Unix.Unix_error (Unix.ESRCH,_,_) -> pr;
+;;
 
 (** transform a run to a result *)
 let result_from_run (pr:run) (status:Unix.process_status) : result =
@@ -120,7 +134,7 @@ let result_from_run (pr:run) (status:Unix.process_status) : result =
   (* check if run was successfull *)
 
   let error = {
-    from = pr.subprover;
+    from = pr;
     channel = snd pr.channels;
     fragments = [];
     szs = Szs.ERR
@@ -130,7 +144,7 @@ let result_from_run (pr:run) (status:Unix.process_status) : result =
   | Unix.WEXITED n when n == 0 ->
     let (szs, fragments) = read_until_szs (snd pr.channels) in
     {
-      from = pr.subprover;
+      from = pr;
       channel = snd pr.channels;
       fragments = fragments;
       szs = szs
@@ -157,8 +171,7 @@ let get_subprover_path (atp:string) : string =
 
 
 (* from here on subprover speific code *)
-
-
+(* fixe me hide more implemention here *)
 let default_subprovers =
 
   let e_init (st:State.state) (name:string) : subprover =
@@ -176,7 +189,7 @@ let default_subprovers =
           (* only output proof if needed *)
         "-l " ^ if st.State.flags.State.proof_output > 1 then "4" else "0" 
       ];
-      debug = name == "e_debug"
+      debug = name = "e_debug"
     }
   in
 
@@ -184,41 +197,112 @@ let default_subprovers =
     
     let comment_prefix = '#' in
     let regex = Str.regexp
-      "^\\(cnf\\|fof\\)(\\(.*\\),\\(.*\\),\\(.*\\)\\(,\\(.*\\)\\)?)\\.$"
+      (* fof           (3          ,axiom       ,formel     ,file...).  *)
+      "^\\(cnf\\|fof\\)(\\([^,]+\\), *\\(axiom\\|plain\\),\\(.+\\)).$" (*", \\(\\(file|inference\\).+\\),\\(.*\\)?).$"*)
     in
     
       (* filter empty lines *)
     let formula_lines = List.filter 
-      (fun line -> String.get line 0 != comment_prefix && String.length line > 0)
+      (fun line ->  String.length line > 0 && String.get line 0 != comment_prefix )
       lines
     in
 
-      (* fof or cnf * name * role * logical formel * source * usefull info (optinal) *)
-    let tuples : (string * string * string * string * string option) list =
+    
+    (** this is essentally a little stack automaton that, can get the first of
+        comma sperated list of wf prolog terms **)
+    let split_formula str : (string * string) =
+
+      let pos = ref 0 in
+      let escaped_literal = ref false in
+      let escape_slash = ref false in
+      let brs = ref [] in
+      let len =  String.length str in
+
+      while !brs <> [] || (!pos < len && (String.get str !pos) <> ',') do
+        ( match String.get str !pos with
+          (* count brackets if  where are not in a escaped leteral *)
+            '(' when not !escaped_literal -> brs := ')' :: !brs
+          | '[' when not !escaped_literal -> brs := ']' :: !brs 
+          | (')' | ']') as br  ->
+            ( match !brs with
+                bre :: rem when bre = br -> brs := rem
+              | _ -> raise (
+                Invalid_argument ( "Expected " ^  Char.escaped (List.hd !brs) 
+                                   ^ "got " ^ Char.escaped br ))
+            )
+          (* toogle escaped literal, if we are not in a literal and an escape slash has preceeded*) 
+          | '\'' when not (!escaped_literal && !escape_slash) ->
+            escaped_literal := not !escaped_literal
+          | '\'' when (!escaped_literal && !escape_slash) ->
+            escape_slash := false
+          (* when an slash within a escaped literal is encountared toggle slash escape *)
+          | '\\' when !escaped_literal -> escape_slash := not !escape_slash
+          (* other wise do nothinh *)
+          | _ -> ()
+        );
+        pos := !pos + 1
+      done;
+      if !pos = len
+      then ( str, "")
+      else (
+        String.sub str 0 (!pos),
+        String.sub str (!pos+1) ((String.length str) - (!pos+1)))
+    in
+        
+    let source_regex = Str.regexp " *file([^,]*, *\\([a-z0-9]+\\))" in
+
+
+    (* fof or cnf * name * role * logical formel * source * usefull info (optinal) *)
+    let tuples : (string * string * string * string * string) list =
       List.map
         (fun line ->
-          ignore(Str.string_match regex line 0);
-          (
+          if not (Str.string_match regex line 0) then
+            print_string ("!" ^ line ^ "!\n")
+          ;
+          let ftype, name, role =
             Str.matched_group 1 line,
             Str.matched_group 2 line,
-            Str.matched_group 3 line,
-            Str.matched_group 4 line,
-            try  Some (Str.matched_group 6 line)
-            with Not_found -> None
+            Str.matched_group 3 line in
+          let (formula, rem) = split_formula  (Str.matched_group 4 line) in
+          let (source, info) = split_formula rem in
+
+          (* rewrite file source *)
+          let source =
+            if Str.string_match source_regex source 0
+            then "inference(fof_translation, [status(thm)],[" ^ (Str.matched_group 1 source) ^ "])"
+            else source
+          in
+          
+          
+
+
+          (
+            ftype,
+            name,
+            role,
+            formula,
+            source
           )
         )
         formula_lines
     in
+    
+
+
+    print_string "-------------------------------------------------\n";
     print_string(
       String.concat "\n" (
-        List.map (fun (a,b,_,d,_) -> String.concat "\t" [a;b;d]  )  tuples
+        List.map (fun (ftype, name, role, _, source) -> 
+          ftype ^ "(" ^  name ^ ", " ^ role ^ ", *formel*, " ^ source ^ ")."
+        ) tuples
       )
     );
-    (0,"")
+    print_string "\n-------------------------------------------------\n";
+    (0,[""])
     
   in
 
-  let dummy_proof a = (0,"") in
+  let dummy_proof a = (0,[""]) in
 
   [
     ("e", (
@@ -297,14 +381,30 @@ let perform_update sc =
   (** Tries to fetch result of specified process, and frees it space in controller
     datastructure *)
   let handle_termination pid status (sc:controller) =
-    let now_finished = List.find
+    let (termprocess, others) = List.partition
       (fun run -> pid == run.pid) sc.running in
-    let still_running = List.filter
-      (fun run -> pid != run.pid) sc.running in
-    { sc with
-      running = still_running;
-      results = (result_from_run now_finished status) :: sc.results
-    }
+
+    (* the process was killed, because of  a strategy decission (see below) *)
+    if termprocess = [] then
+      sc
+    else
+      let result = result_from_run (List.hd termprocess) status in
+      (* strategic decisions based on szs value *)
+      (* if Ax => true holds, for one model no refutation can be given, therefore
+         terminate all other provers with the same input *)
+      if Szs.is_a result.szs Szs.SAT then
+        let (to_kill, others) = List.partition
+          (fun run -> run.inputId == result.from.inputId) others in
+        let killed = (List.map (fun(pr) -> result_from_run (kill pr) (Unix.WSIGNALED 15)) to_kill) in
+          { sc with
+            waiting = List.filter (fun ((id, _), _) -> id = result.from.inputId) sc.waiting;
+            results = result :: killed @ sc.results
+          }
+      else
+        { sc with
+          running = others;
+          results = result :: sc.results
+        }
   in
 
   (** start as many new subprovers as possible *)
@@ -320,7 +420,7 @@ let perform_update sc =
     let capacity = sc.max_parrallel -  (List.length sc.running) in
     let (run_cand,  still_waiting) = split capacity sc.waiting in
     let now_running =  List.map
-      (fun(problem, prover) -> start prover problem)
+      (fun((inputId, problem), prover) -> start prover inputId problem)
       run_cand in
     { sc with
       running = List.append sc.running now_running;
@@ -341,10 +441,10 @@ let perform_update sc =
 
 (** helpers *)
 
-let add_problem (fo_clauses:string) : controller -> controller =
+let add_problem ((fo_id, fo_clauses):(int * string)) : controller -> controller =
   fun (sp_con) ->
     let waiting = List.map
-      (fun (prover:subprover) -> fo_clauses, prover)
+      (fun (prover:subprover) -> (fo_id, fo_clauses), prover)
       sp_con.provers in
     { sp_con with waiting = waiting } ;;
 
@@ -377,10 +477,10 @@ let get_solutions (sc:controller) : controller * result list =
 let collect_solution (st:State.state) : (bool * string list * string) =
 
   let generate_proof result =
-    let handler = (snd (List.assoc result.from.name default_subprovers)) in
+    let handler = (snd (List.assoc result.from.subprover.name default_subprovers)) in
     let (_, output) = read_until (fun _ -> None) () result.channel in
-    let output = output @ results.fragments in
-    handler output
+    let output = output @ result.fragments in
+    (true, snd (handler output), "")
   in
 
   match st.State.subprover_controller with
@@ -389,15 +489,19 @@ let collect_solution (st:State.state) : (bool * string list * string) =
     let (sc, results) = get_solutions sc  in
     st.State.subprover_controller <- Some sc;
     
-    if results != [] then (* proof found *)
-      if st.flags.proof_output > 1 then (* give porve *)
-        generate proof (List.hd results) 
-      else (true, [], "") (* proof with out evidence *)
-      else (false, [], "") (* no proof found *)
+    (* proof found *)
+    if results != [] then 
+      (* give porve *)
+      if st.State.flags.State.proof_output >= 1 then 
+        generate_proof (List.hd results) 
+      (* proof without evidence *)
+      else (true, [], "") 
+    (* no proof found *)
+    else (false, [], "") 
           
   (* no subprover has been started yet *)
   | None ->
-    (false, [])
+    (false, [], "")
 ;;
 
 
@@ -417,7 +521,8 @@ let collect_solution (st:State.state) : (bool * string list * string) =
 
 let submit_problem (st:State.state) : unit =
   let fo_clauses:string = Main.get_fo_clauses st in
-  bind (add_problem fo_clauses) st
+  let inputId = st.State.foatp_calls in
+  bind (add_problem (inputId, fo_clauses)) st
 ;;
 
 let tick (st:State.state) =

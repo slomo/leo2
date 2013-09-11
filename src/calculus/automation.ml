@@ -445,34 +445,18 @@ let supported_atps = List.map fst Parallel.default_subprovers ;;
  *)
 
 
- let call_fo_atp_help (st:state) (prover:string)
+ let call_fo_atp_help (st:state) (prover:string) 
      (candidate_clauses:cl_clause list) : unit =
 
-   (* build candidate clauses *)
+   (*  *)
    let candidate_clauses_numbers_and_strings =
      List.map (fun cl -> (cl.cl_number, "")) candidate_clauses
    in
-
+   
    begin
 
      Translation.tr_add_fo_clauses candidate_clauses st;
-
-       (* let apply_prover = get_atp_main prover in
-            (*FIXME use a config record rather than hardcoding this*)
-          if prover <> "e" then
-          begin
-          let file_in = atp_infile st in
-          let chan = open_out file_in in
-          let fo_clauses = get_fo_clauses st in
-          Util.register_tmpfile file_in;
-          output_string chan fo_clauses;
-          close_out chan;
-          Util.sysout 1 ("\n*** File " ^ file_in ^ " written; it contains " ^
-          "translations of the FO-like clauses in LEO-II's search space into " ^
-          "target syntax. Here is its content: ***\n");
-          Util.sysout 1 fo_clauses;
-          Util.sysout 1 ("\n*** End of file " ^ file_in ^ " ***\n")
-          end; *)
+     
      st.foatp_calls <- st.foatp_calls + 1;
 
        (* if there are new fo-formulars add them *)
@@ -480,16 +464,7 @@ let supported_atps = List.map fst Parallel.default_subprovers ;;
        Parallel.submit_problem st;
 
      let (result, used_clauses, protocol) =
-
-       (* print_string ":";
-       print_string "\n<< pre <<<<<<<<<<\n";
-       Subprover.debug st;
-       print_string "\n>>>>>>>>>>>>>>>>>\n";
-       *) Parallel.tick st; (*
-       print_string "\n<< post <<<<<<<<<\n";
-       Subprover.debug st;
-       print_string "\n>>>>>>>>>>>>>>>>>\n"; *)
-
+       Parallel.tick st;
        Parallel.collect_solution st
 
        (*                 memorize_execution_time st.origproblem_filename

@@ -31,6 +31,7 @@ let string_of_prover (prover:subprover) : string =
 
 (** Every call to a subprover results in a subprover run. *)
 type run = {
+  inputId: int;
   subprover: subprover;
   pid: int;
   channels: out_channel * in_channel;
@@ -42,7 +43,7 @@ let string_of_run (run:run) = match run with
 ;;
 
 type result = {
-  from: subprover;
+  from: run;
   channel: in_channel;
   fragments: string list;
   szs: Szs.status
@@ -55,7 +56,7 @@ type controller = {
   max_parrallel: int;
   provers:  subprover list;
   running: run list;
-  waiting: ( string * subprover) list;
+  waiting: ( (int * string) * subprover) list;
   results: result list;
 };;
 
