@@ -359,12 +359,12 @@ let init (st: State.state) =
   sc
 ;;
 
-let bind (f : controller -> controller) st =
-  let obj = match st.State.subprover_controller with
+let bind (f : state -> state) st =
+  let obj = match st.State.subprover_state with
     | None -> init st
-    | Some controller -> controller
+    | Some state -> state
   in
-  st.State.subprover_controller <- Some (f obj)
+  st.State.subprover_state <- Some (f obj)
 ;;
 
 let perform_update sc =
@@ -378,9 +378,9 @@ let perform_update sc =
       Unix.Unix_error (Unix.ECHILD,_,_) -> []
   in
 
-  (** Tries to fetch result of specified process, and frees it space in controller
+  (** Tries to fetch result of specified process, and frees it space in state
     datastructure *)
-  let handle_termination pid status (sc:controller) =
+  let handle_termination pid status (sc:state) =
     let (termprocess, others) = List.partition
       (fun run -> pid == run.pid) sc.running in
 
@@ -408,7 +408,7 @@ let perform_update sc =
   in
 
   (** start as many new subprovers as possible *)
-  let start_subprovers (sc:controller) =
+  let start_subprovers (sc:state) =
 
   (*FIXME: may be replaced with batterie version of split_at *)
     let rec split (n:int) list =
@@ -441,14 +441,14 @@ let perform_update sc =
 
 (** helpers *)
 
-let add_problem ((fo_id, fo_clauses):(int * string)) : controller -> controller =
+let add_problem ((fo_id, fo_clauses):(int * string)) : state -> state =
   fun (sp_con) ->
     let waiting = List.map
       (fun (prover:subprover) -> (fo_id, fo_clauses), prover)
       sp_con.provers in
     { sp_con with waiting = waiting } ;;
 
-let get_solutions (sc:controller) : controller * result list =
+let get_solutions (sc:state) : state * result list =
   (* remove all unsucessfull *)
   let successfull = List.filter
     (fun run -> Szs.is_a Szs.UNS run.szs)
@@ -457,7 +457,7 @@ let get_solutions (sc:controller) : controller * result list =
 ;;
 
 (** Kill all subprovers that haven't terminating by them self *)
-(*let kill_all_provers (sc:controller) : controller  =
+(*let kill_all_provers (sc:state) : state  =
   let now_finished = List.map (fun prover_run ->
     if is_active(prover_run)
     then prover_run
@@ -483,11 +483,11 @@ let collect_solution (st:State.state) : (bool * string list * string) =
     (true, snd (handler output), "")
   in
 
-  match st.State.subprover_controller with
+  match st.State.subprover_state with
   | Some sc ->
     (* get sucessfull results *)
     let (sc, results) = get_solutions sc  in
-    st.State.subprover_controller <- Some sc;
+    st.State.subprover_state <- Some sc;
     
     (* proof found *)
     if results != [] then 
@@ -530,7 +530,7 @@ let tick (st:State.state) =
 ;;
 
 let debug (st) =
-  bind (fun (sc) -> print_string (string_of_controller sc); sc) st
+  bind (fun (sc) -> print_string (string_of_state sc); sc) st
 ;;
 
 let detect_cpu_count () =

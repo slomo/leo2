@@ -23,11 +23,11 @@ type result = {
   szs : Szs.status;
 }
 val string_of_result : result -> string
-type controller = {
+type state = {
   max_parrallel : int;
   provers : subprover list;
   running : run list;
   waiting : ((int * string) * subprover) list;
   results : result list;
 }
-val string_of_controller : controller -> string
+val string_of_state : state -> string

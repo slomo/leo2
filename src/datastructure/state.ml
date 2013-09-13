@@ -213,7 +213,7 @@ type state = {
     mutable foatp_calls : int;
     mutable choice_functions : term list;
     mutable flags : flags;
-    mutable subprover_controller : Subprover.controller option;
+    mutable subprover_state : Subprover.state option;
   }
 
 (*FIXME move inside "state" record? but then would
@@ -257,7 +257,7 @@ let state_initialize =
       fo_clauses_new = [];
       foatp_calls = 0;
       choice_functions = [];
-      subprover_controller = None;
+      subprover_state = None;
       flags = {verbose = false;
                max_clause_count = -1;
                max_loop_count = -1;

@@ -52,7 +52,7 @@ type result = {
 let string_of_result (res: result) =
   "result(" ^ Szs.string_of_szs res.szs ^ ")"
 
-type controller = {
+type state = {
   max_parrallel: int;
   provers:  subprover list;
   running: run list;
@@ -60,7 +60,7 @@ type controller = {
   results: result list;
 };;
 
-let string_of_controller (con:controller) =
+let string_of_state (con:state) =
   "{ running: " ^ String.concat "\n           "
     (List.map string_of_run con.running) ^ "\n" ^
   "  waiting: " ^ String.concat "\n           "
