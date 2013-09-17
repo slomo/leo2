@@ -1100,7 +1100,8 @@ let loop (st:state) =
             IFDEF DEBUG THEN
               output st (fun () -> "\n10. ACTIVE: " ^ cl_clauselist_to_protocol (Set_of_clauses.elements st.active));
             ENDIF;
-            Stat.stop_timer("mainloop.active")
+            Stat.stop_timer("mainloop.active");
+            Stat.count("mainloop.complete")
           end
     done
   with
