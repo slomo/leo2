@@ -648,7 +648,7 @@ let szs_result maybe_st =
       | Some st -> ": " ^ summary_stats_string st
   in
     "% SZS status " ^ szs_status_string !current_success_status ^
-      " " ^ prob_file ^ " " ^ extra_info
+      " " ^ prob_file ^ " " ^ extra_info ^ "\n" ^ Stat.stats_string ()
 
 let szs_exitcode () =
   szs_status_exitcode !current_success_status
