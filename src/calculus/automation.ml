@@ -737,11 +737,14 @@ let pre_process (st:state) =
 
 (*The Main Loop*)
 let loop (st:state) =
+  Stat.stop_timer("mainloop.offset");
   IFDEF DEBUG THEN Util.sysout 1 ("<StartLooping>") ENDIF;
   try
     while not (check_local_max_time st) do
       let lc = inc_loop_count st
       in
+        Stat.count("mainloop.entry");
+        Stat.start_timer("mainloop.checktime");
         State.check_timeout ();
         IFDEF DEBUG THEN output st (fun () -> "\n\n *** NEW LOOP: " ^ string_of_int lc ^ " ***\n") ENDIF;
         if st.flags.max_loop_count > 0 && st.loop_count >= st.flags.max_loop_count then
@@ -750,7 +753,11 @@ let loop (st:state) =
             set_current_success_status (Some st) GaveUp;
             raise MAX_LOOPS
           end;
+        Stat.stop_timer("mainloop.checktime");
+        Stat.start_timer("mainloop.subpover");
         if not (st.flags.atp_provers == []) then call_fo_atp_according_to_frequency_flag st (List.hd st.flags.atp_provers);
+        Stat.stop_timer("mainloop.subpover");
+        Stat.start_timer("mainloop.lightes");
         let lightest' =
           let lightest = choose_and_remove_lightest_from_active st in
             IFDEF DEBUG THEN
@@ -762,10 +769,19 @@ let loop (st:state) =
             ENDIF;
             rename_free_variables lightest st
         in
-          if not (is_subsumed_by lightest' (Set_of_clauses.elements st.passive) st FO_match)
-            & (if st.flags.use_choice then (match detect_choice lightest' st with [] -> false | _ -> true) else true)
+        Stat.stop_timer("mainloop.lightes");
+        Stat.start_timer("mainloop.subsumed");
+        let is_subsumed = (is_subsumed_by lightest' (Set_of_clauses.elements st.passive) st FO_match) &
+          (if st.flags.use_choice
+           then (
+             match detect_choice lightest' st
+             with [] -> false | _ -> true)
+           else true) in
+        Stat.stop_timer("mainloop.subsumed");
+          if not is_subsumed
           then
             begin
+              Stat.start_timer("mainloop.calculus");
               set_passive st (list_to_set (delete_subsumed_clauses (Set_of_clauses.elements st.passive) lightest' st FO_match));
 	      add_to_passive st lightest';
               (* set_passive st (list_to_set (merge_lists_with_subsumption [lightest'] (Set_of_clauses.elements st.passive) st FO_match)); *)
@@ -813,6 +829,8 @@ let loop (st:state) =
             IFDEF DEBUG THEN
               output st (fun () -> "\n9. PROCESSED (replacement of LeibnizEQ and AndrewsEQ eventually applied): " ^ cl_clauselist_to_protocol res_processed);
             ENDIF;
+            Stat.stop_timer("mainloop.calculus");
+            Stat.start_timer("mainloop.updatesets");
 
             let new_active = (res_processed @ Set_of_clauses.elements st.active) in
               (* merge_lists_with_subsumption (res_processed) (Set_of_clauses.elements st.active) st FO_match in *)
@@ -822,7 +840,9 @@ let loop (st:state) =
             IFDEF DEBUG THEN
               output st (fun () -> "\n10. ACTIVE: " ^ cl_clauselist_to_protocol (Set_of_clauses.elements st.active));
             ENDIF;
-          end
+            Stat.stop_timer("mainloop.updatesets");
+            end;
+          Stat.count("mainloop.complete")
     done
   with
       Sys.Break ->
