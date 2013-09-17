@@ -50,8 +50,15 @@ let stop_timer timer =
   timers := StringMap.add timer (acc +. (current_time -. start_time), (-1.0)) !timers
 ;;
 
+(* also stops all timers *)
 let string_of_timers =
-  string_of_StringMap (fun (value, _) -> string_of_float value)
+  string_of_StringMap (fun (acc, start_time) ->
+    let current_time =  Unix.gettimeofday() in
+    if start_time = -1.0 then
+      string_of_float acc
+    else
+      let value = acc +. (current_time -. start_time) in
+      string_of_float value)
 ;;
 
 
