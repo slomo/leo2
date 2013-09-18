@@ -518,6 +518,7 @@ let rec process args = match args with
 
 let leo_main () =
   (*POSIX signal number for "CPU time limit exceeded"*)
+  Stat.start_timer("mainloop.offset");
   let sigxcpu = 24
   in
     (*register signal handlers*)

@@ -1006,11 +1006,13 @@ let pre_process (st:state) =
 
 (*The Main Loop*)
 let loop (st:state) =
+  Stat.stop_timer("mainloop.offset");
   IFDEF DEBUG THEN Util.sysout 1 ("<StartLooping>") ENDIF;
   try
     while not (check_local_max_time st) do
       let lc = inc_loop_count st
       in
+        Stat.count("mainloop.entry");
         Stat.start_timer("mainloop.checktime");
         State.check_timeout ();
         IFDEF DEBUG THEN output st (fun () -> "\n\n *** NEW LOOP: " ^ string_of_int lc ^ " ***\n") ENDIF;
