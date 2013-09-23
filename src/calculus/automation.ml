@@ -1050,7 +1050,6 @@ let loop (st:state) =
           if not is_subsumed
           then
             begin
-              Stat.stop_timer("mainloop.subsumed");
               Stat.start_timer("mainloop.calculus");
               set_passive st (list_to_set (delete_subsumed_clauses (Set_of_clauses.elements st.passive) lightest' st FO_match));
 	      add_to_passive st lightest';
