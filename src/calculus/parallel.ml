@@ -309,6 +309,14 @@ let default_subprovers =
        e_init, e_proof));
     ("e_debug", (
        e_init, e_proof));
+    ("vampire", (
+     ( fun st name -> {
+       sp_type = Folprover;
+       path = get_subprover_path("vampire");
+       name = "Vampire";
+       options = [];
+       debug = false;
+       }), dummy_proof));
     ("spass", (
       (fun st name -> {
         sp_type = Folprover;
