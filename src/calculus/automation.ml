@@ -823,8 +823,10 @@ let loop (st:state) =
               output st (fun () -> "\n10. ACTIVE: " ^ cl_clauselist_to_protocol (Set_of_clauses.elements st.active));
             ENDIF;
           end
-    done
+    done;
+    Parallel.final_tick st
   with
       Sys.Break ->
+        Parallel.final_tick st;
         set_current_success_status (Some st) User;
         raise (Termination (Some st))

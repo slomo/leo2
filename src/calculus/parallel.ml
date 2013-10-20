@@ -33,7 +33,7 @@
 *)
 
 open Subprover
-
+module StringMap = Map.Make(String);;
 
 (** helpers *)
 
@@ -170,6 +170,83 @@ let get_subprover_path (atp:string) : string =
 ;;
 
 
+(* primitive decoders  *)
+
+let topfunctor str =
+
+  print_string (str ^ "\n");
+  print_string "--------------\n";
+
+  let pos = ref 0 in
+  let len =  String.length str in
+
+  let name =
+    let start = !pos in
+    while not (!pos == len || (String.get str !pos) == '(') do pos := !pos + 1 done;
+    String.sub str 0 !pos
+  in
+
+  if !pos == len then
+    (name, [])
+
+  else
+    begin 
+      (* jump over breaket *)
+      pos := !pos + 1;    
+
+      let lastpos = ref !pos in
+      let args = ref [] in
+      let brs = ref [] in
+      let escaped_literal = ref false in
+      let escape_slash = ref false in
+      (** this is essentally a little stack automaton that, can get the first of
+          comma sperated list of wf prolog terms **)
+
+
+
+      while not (!brs == [] && (String.get str !pos) == ')')  do
+        ( match String.get str !pos with
+          (* count brackets if  where are not in a escaped leteral *)
+          '(' when not !escaped_literal -> brs := ')' :: !brs
+        | '[' when not !escaped_literal -> brs := ']' :: !brs 
+        | (')' | ']') as br  ->
+          ( match !brs with
+            bre :: rem when bre = br -> brs := rem
+          | _ -> raise (
+            Invalid_argument ( "Expected " ^  Char.escaped (List.hd !brs) 
+                               ^ "got " ^ Char.escaped br ))
+          )
+        (* toogle escaped literal, if we are not in a literal and an escape slash has preceeded*) 
+        | '\'' when not (!escaped_literal && !escape_slash) ->
+          escaped_literal := not !escaped_literal
+        | '\'' when (!escaped_literal && !escape_slash) ->
+          escape_slash := false
+        (* when an slash within a escaped literal is encountared toggle slash escape *)
+        | '\\' when !escaped_literal -> escape_slash := not !escape_slash
+        (* other wise do nothinh *)
+        | _ -> ()
+        );
+
+        if !brs == [] && (String.get str !pos) == ',' then
+          begin
+            args := (String.trim (String.sub str (!lastpos) (!pos - !lastpos))) :: !args;
+            lastpos := !pos + 1
+          end;
+        pos := !pos + 1
+      done;
+
+      args := (String.trim (String.sub str (!lastpos) (!pos - !lastpos))) :: !args;
+      lastpos := !pos + 1;
+      ( name, List.rev !args)
+    end;
+;;
+
+
+let parselist str =
+  let s = String.sub str 1 ((String.length str) - 2) in
+  List.map (fun x -> String.trim x) (Str.split (Str.regexp ",") s)
+  
+
 (* from here on subprover speific code *)
 (* fixe me hide more implemention here *)
 let default_subprovers =
@@ -193,67 +270,91 @@ let default_subprovers =
     }
   in
 
-  let e_proof (lines:string list) =
-    
-    let comment_prefix = '#' in
-    let regex = Str.regexp
-      (* fof           (3          ,axiom       ,formel     ,file...).  *)
-      "^\\(cnf\\|fof\\)(\\([^,]+\\), *\\(axiom\\|plain\\),\\(.+\\)).$" (*", \\(\\(file|inference\\).+\\),\\(.*\\)?).$"*)
-    in
-    
-      (* filter empty lines *)
-    let formula_lines = List.filter 
-      (fun line ->  String.length line > 0 && String.get line 0 != comment_prefix )
+  let e_proof (st:State.state) (lines:string list) : (int * string list) =
+
+    let formulas = List.filter
+      (fun (line) -> (String.length line) > 0 && (String.get line 0) <> '#')
       lines
     in
 
-    
-    (** this is essentally a little stack automaton that, can get the first of
-        comma sperated list of wf prolog terms **)
-    let split_formula str : (string * string) =
+    (* remove the last step from the proof to work around an issue in E (as of 1.8) *)
+    let formulas = List.rev (List.tl (List.rev formulas)) in 
 
-      let pos = ref 0 in
-      let escaped_literal = ref false in
-      let escape_slash = ref false in
-      let brs = ref [] in
-      let len =  String.length str in
+    let index = ref StringMap.empty in
+    let counter = ref (st.State.clause_count + 1)  in
 
-      while !brs <> [] || (!pos < len && (String.get str !pos) <> ',') do
-        ( match String.get str !pos with
-          (* count brackets if  where are not in a escaped leteral *)
-            '(' when not !escaped_literal -> brs := ')' :: !brs
-          | '[' when not !escaped_literal -> brs := ']' :: !brs 
-          | (')' | ']') as br  ->
-            ( match !brs with
-                bre :: rem when bre = br -> brs := rem
-              | _ -> raise (
-                Invalid_argument ( "Expected " ^  Char.escaped (List.hd !brs) 
-                                   ^ "got " ^ Char.escaped br ))
+    let proof_numbers = List.map
+      (fun (formula) ->
+
+        let (ftype, id::role::formula::source::_ ) = topfunctor formula in
+        counter := !counter + 1;        
+        index := StringMap.add id !counter !index;
+
+        (** rewrite source **)
+        let (source, parents) = match topfunctor source with
+            ("file", [filename; axiom]) ->
+              ("inference(fof_translation, [status(thm)], [" ^ axiom ^ "])",
+               [((if String.get axiom 0 == 'l'
+                 then 0
+                 else int_of_string axiom), axiom) ])
+          | ("inference", [ name; info_str; parent_str ]) ->
+
+            let parents = parselist parent_str in
+            let info = parselist info_str in
+            
+
+          (** filter theories from parents, where e puts them **)
+            let theories = List.filter
+              (fun parent ->
+                (fst (topfunctor parent)) = "theory"
+              )
+              parents
+            in
+            
+            let parents = List.map
+              (fun parent -> string_of_int (StringMap.find parent !index))
+              (List.filter 
+                 (fun parent ->
+                   let head = fst (topfunctor parent) in
+                   head <> "theory"
+                 )
+                 parents
+              )
+            in
+            let info_up = "[" ^ (String.concat ", " (info @ theories ))  ^ "]"  in
+            let parents_up = "[" ^ (String.concat ", " parents)  ^ "]" in
+            ("inference(" ^  (String.concat ", " [name; info_up; parents_up]) ^ ")",
+             List.map 
+               (fun(parent) -> (int_of_string parent, parent))
+               parents
             )
-          (* toogle escaped literal, if we are not in a literal and an escape slash has preceeded*) 
-          | '\'' when not (!escaped_literal && !escape_slash) ->
-            escaped_literal := not !escaped_literal
-          | '\'' when (!escaped_literal && !escape_slash) ->
-            escape_slash := false
-          (* when an slash within a escaped literal is encountared toggle slash escape *)
-          | '\\' when !escaped_literal -> escape_slash := not !escape_slash
-          (* other wise do nothinh *)
-          | _ -> ()
-        );
-        pos := !pos + 1
-      done;
-      if !pos = len
-      then ( str, "")
-      else (
-        String.sub str 0 (!pos),
-        String.sub str (!pos+1) ((String.length str) - (!pos+1)))
+        in
+
+
+        let list = [ string_of_int !counter; role; formula; source] in
+        let proto_string = ftype ^ "(" ^ (String.concat ", " list) ^ ")." in
+        Main.add_to_protocol (!counter, ("e", parents, ""), proto_string) st;
+        string_of_int !counter
+      )
+      formulas
     in
-        
-    let source_regex = Str.regexp " *file([^,]*, *\\([a-z0-9]+\\))" in
+    
+    State.set_clause_count st (!counter -1);
+
+    (0, [string_of_int (!counter -1)] )
+         
+              
+
+
+(*    List.iter (fun(formula) ->
+
+      print_string ((String.concat " # " [ftype; id; role; source ]) ^ "\n")
+    ) formulas;
+*)
 
 
     (* fof or cnf * name * role * logical formel * source * usefull info (optinal) *)
-    let tuples : (string * string * string * string * string) list =
+    (*let tuples : (string * string * string * string * string) list =
       List.map
         (fun line ->
           if not (Str.string_match regex line 0) then
@@ -284,7 +385,7 @@ let default_subprovers =
             source
           )
         )
-        formula_lines
+        formula_lines;
     in
     
 
@@ -298,11 +399,12 @@ let default_subprovers =
       )
     );
     print_string "\n-------------------------------------------------\n";
-    (0,[""])
+    *)
+
     
   in
 
-  let dummy_proof a = (0,[""]) in
+  let dummy_proof a st = (0,[""]) in
 
   [
     ("e", (
@@ -465,16 +567,12 @@ let get_solutions (sc:state) : state * result list =
 ;;
 
 (** Kill all subprovers that haven't terminating by them self *)
-(*let kill_all_provers (sc:state) : state  =
-  let now_finished = List.map (fun prover_run ->
-    if is_active(prover_run)
-    then prover_run
-    else begin kill(prover_run); prover_run end ) sc.running in
+let kill_all (st:state) : state = 
+  ignore (List.map (fun run ->
+    ignore(try kill run with _ -> run )
+  ) st.running);
+  st
 
-  let all_finished = List.append sc.finished now_finished in
-  { sc with finished = all_finished } ;;
-
-*)
 (** api functions *)
 
 (** This function can be used to collect results of subprovers 
@@ -488,7 +586,7 @@ let collect_solution (st:State.state) : (bool * string list * string) =
     let handler = (snd (List.assoc result.from.subprover.name default_subprovers)) in
     let (_, output) = read_until (fun _ -> None) () result.channel in
     let output = output @ result.fragments in
-    (true, snd (handler output), "")
+    (true, snd (handler st output), "")
   in
 
   match st.State.subprover_state with
@@ -540,6 +638,10 @@ let tick (st:State.state) =
 let debug (st) =
   bind (fun (sc) -> print_string (string_of_state sc); sc) st
 ;;
+
+let final_tick (st) =
+  bind perform_update st;
+  bind kill_all st
 
 let detect_cpu_count () =
   try

@@ -10,11 +10,12 @@ val result_from_run :
 val default_subprovers : 
   (string * 
      ( (state -> string -> subprover) *
-         (string list -> int * string list))) list
+         (state -> string list -> int * string list))) list
 
 
 val collect_solution : state -> bool * string list * string
 val submit_problem : state -> unit
 val tick : state -> unit
+val final_tick : state -> unit
 val debug : state -> unit
 val detect_cpu_count : unit -> int
