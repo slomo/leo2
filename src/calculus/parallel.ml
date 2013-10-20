@@ -506,7 +506,7 @@ let perform_update sc =
       (* strategic decisions based on szs value *)
       (* if Ax => true holds, for one model no refutation can be given, therefore
          terminate all other provers with the same input *)
-      if Szs.is_a result.szs Szs.SAT then
+      (*if Szs.is_a result.szs Szs.SAT then
         let (to_kill, others) = List.partition
           (fun run -> run.inputId == result.from.inputId) others in
         let killed = (List.map (fun(pr) -> result_from_run (kill pr) (Unix.WSIGNALED 15)) to_kill) in
@@ -514,7 +514,7 @@ let perform_update sc =
             waiting = List.filter (fun ((id, _), _) -> id = result.from.inputId) sc.waiting;
             results = result :: killed @ sc.results
           }
-      else
+      else*)
         { sc with
           running = others;
           results = result :: sc.results
