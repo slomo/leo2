@@ -37,7 +37,7 @@ module StringMap = Map.Make(String);;
 
 (** helpers *)
 
-let rec read_until f fallback channel =  
+let rec read_until f fallback channel =
   try
     let line = input_line channel in
     match f line with
@@ -127,7 +127,7 @@ let result_from_run (pr:run) (status:Unix.process_status) : result =
 
   (* fixme: this is not tail recursiv *)
   let read_until_szs(channel: in_channel) =
-    read_until Szs.read_status Szs.ERR channel 
+    read_until Szs.read_status Szs.ERR channel
   in
 
   (* fixme: generate proof if requested *)
@@ -170,53 +170,32 @@ let get_subprover_path (atp:string) : string =
 ;;
 
 
-(* primitive decoders  *)
 
-let topfunctor str =
+let prolog_split str delim =
 
-  print_string (str ^ "\n");
-  print_string "--------------\n";
+  let len = String.length str in
+  let terms = ref [] in
 
+  (* parser state *)
   let pos = ref 0 in
-  let len =  String.length str in
+  let lastpos = ref 0 in
+  let brs = ref [] in
+  let escaped_literal = ref false in
+  let escape_slash = ref false in
 
-  let name =
-    let start = !pos in
-    while not (!pos == len || (String.get str !pos) == '(') do pos := !pos + 1 done;
-    String.sub str 0 !pos
-  in
-
-  if !pos == len then
-    (name, [])
-
-  else
-    begin 
-      (* jump over breaket *)
-      pos := !pos + 1;    
-
-      let lastpos = ref !pos in
-      let args = ref [] in
-      let brs = ref [] in
-      let escaped_literal = ref false in
-      let escape_slash = ref false in
-      (** this is essentally a little stack automaton that, can get the first of
-          comma sperated list of wf prolog terms **)
-
-
-
-      while not (!brs == [] && (String.get str !pos) == ')')  do
+  while not (!brs == [] &&  String.get str !pos == delim) do
         ( match String.get str !pos with
           (* count brackets if  where are not in a escaped leteral *)
           '(' when not !escaped_literal -> brs := ')' :: !brs
-        | '[' when not !escaped_literal -> brs := ']' :: !brs 
+        | '[' when not !escaped_literal -> brs := ']' :: !brs
         | (')' | ']') as br  ->
           ( match !brs with
             bre :: rem when bre = br -> brs := rem
           | _ -> raise (
-            Invalid_argument ( "Expected " ^  Char.escaped (List.hd !brs) 
+            Invalid_argument ( "Expected " ^  Char.escaped (List.hd !brs)
                                ^ "got " ^ Char.escaped br ))
           )
-        (* toogle escaped literal, if we are not in a literal and an escape slash has preceeded*) 
+        (* toogle escaped literal, if we are not in a literal and an escape slash has preceeded*)
         | '\'' when not (!escaped_literal && !escape_slash) ->
           escaped_literal := not !escaped_literal
         | '\'' when (!escaped_literal && !escape_slash) ->
@@ -227,25 +206,47 @@ let topfunctor str =
         | _ -> ()
         );
 
-        if !brs == [] && (String.get str !pos) == ',' then
+        if !brs == [] && (String.get str !pos) = ','  then
           begin
-            args := (String.trim (String.sub str (!lastpos) (!pos - !lastpos))) :: !args;
+            terms := (String.trim (String.sub str (!lastpos) (!pos - !lastpos))) :: !terms;
             lastpos := !pos + 1
           end;
         pos := !pos + 1
-      done;
-
-      args := (String.trim (String.sub str (!lastpos) (!pos - !lastpos))) :: !args;
-      lastpos := !pos + 1;
-      ( name, List.rev !args)
-    end;
+  done;
+  terms := (String.trim (String.sub str (!lastpos) (!pos - !lastpos))) :: !terms;
+  List.rev !terms
 ;;
 
 
-let parselist str =
-  let s = String.sub str 1 ((String.length str) - 2) in
-  List.map (fun x -> String.trim x) (Str.split (Str.regexp ",") s)
-  
+
+(* primitive decoders  *)
+let prolog_functor str =
+
+
+  let pos = ref 0 in
+  let len =  String.length str in
+
+  let name =
+    let start = !pos in
+    while not (!pos == len || (String.get str !pos) == '(') do pos := !pos + 1 done;
+    String.sub str 0 !pos
+  in
+
+  if !pos = len then
+    (name, [])
+
+  else
+    begin
+      pos := !pos + 1;
+      (name, prolog_split (String.sub str (!pos) ((String.length str) - !pos)) ')' )
+    end
+;;
+
+
+let prolog_list str =
+  let s = String.sub str 1 ((String.length str) - 1) in
+  (prolog_split s ']')
+
 
 (* from here on subprover speific code *)
 (* fixe me hide more implemention here *)
@@ -262,9 +263,9 @@ let default_subprovers =
         "--memory-limit=Auto";
         "--tptp3-format";
           (* limit execution time FIXME: might be seensless *)
-        "--cpu-limit=" ^ string_of_int st.State.flags.State.atp_timeout; 
+        "--cpu-limit=" ^ string_of_int st.State.flags.State.atp_timeout;
           (* only output proof if needed *)
-        "-l " ^ if st.State.flags.State.proof_output > 1 then "4" else "0" 
+        "-l " ^ if st.State.flags.State.proof_output > 1 then "4" else "0"
       ];
       debug = name = "e_debug"
     }
@@ -278,7 +279,7 @@ let default_subprovers =
     in
 
     (* remove the last step from the proof to work around an issue in E (as of 1.8) *)
-    let formulas = List.rev (List.tl (List.rev formulas)) in 
+    let formulas = List.rev (List.tl (List.rev formulas)) in
 
     let index = ref StringMap.empty in
     let counter = ref (st.State.clause_count + 1)  in
@@ -286,12 +287,12 @@ let default_subprovers =
     let proof_numbers = List.map
       (fun (formula) ->
 
-        let (ftype, id::role::formula::source::_ ) = topfunctor formula in
-        counter := !counter + 1;        
+        let (ftype, id::role::formula::source::_ ) = prolog_functor formula in
+        counter := !counter + 1;
         index := StringMap.add id !counter !index;
 
         (** rewrite source **)
-        let (source, parents) = match topfunctor source with
+        let (source, parents) = match prolog_functor source with
             ("file", [filename; axiom]) ->
               ("inference(fof_translation, [status(thm)], [" ^ axiom ^ "])",
                [((if String.get axiom 0 == 'l'
@@ -299,23 +300,23 @@ let default_subprovers =
                  else int_of_string axiom), axiom) ])
           | ("inference", [ name; info_str; parent_str ]) ->
 
-            let parents = parselist parent_str in
-            let info = parselist info_str in
-            
+            let parents = prolog_list parent_str in
+            let info = prolog_list info_str in
+
 
           (** filter theories from parents, where e puts them **)
             let theories = List.filter
               (fun parent ->
-                (fst (topfunctor parent)) = "theory"
+                (fst (prolog_functor parent)) = "theory"
               )
               parents
             in
-            
+
             let parents = List.map
               (fun parent -> string_of_int (StringMap.find parent !index))
-              (List.filter 
+              (List.filter
                  (fun parent ->
-                   let head = fst (topfunctor parent) in
+                   let head = fst (prolog_functor parent) in
                    head <> "theory"
                  )
                  parents
@@ -324,7 +325,7 @@ let default_subprovers =
             let info_up = "[" ^ (String.concat ", " (info @ theories ))  ^ "]"  in
             let parents_up = "[" ^ (String.concat ", " parents)  ^ "]" in
             ("inference(" ^  (String.concat ", " [name; info_up; parents_up]) ^ ")",
-             List.map 
+             List.map
                (fun(parent) -> (int_of_string parent, parent))
                parents
             )
@@ -338,12 +339,12 @@ let default_subprovers =
       )
       formulas
     in
-    
-    State.set_clause_count st (!counter -1);
 
-    (0, [string_of_int (!counter -1)] )
-         
-              
+    State.set_clause_count st (!counter);
+
+    (0, [string_of_int (!counter)] )
+
+
 
 
 (*    List.iter (fun(formula) ->
@@ -373,8 +374,8 @@ let default_subprovers =
             then "inference(fof_translation, [status(thm)],[" ^ (Str.matched_group 1 source) ^ "])"
             else source
           in
-          
-          
+
+
 
 
           (
@@ -387,13 +388,13 @@ let default_subprovers =
         )
         formula_lines;
     in
-    
+
 
 
     print_string "-------------------------------------------------\n";
     print_string(
       String.concat "\n" (
-        List.map (fun (ftype, name, role, _, source) -> 
+        List.map (fun (ftype, name, role, _, source) ->
           ftype ^ "(" ^  name ^ ", " ^ role ^ ", *formel*, " ^ source ^ ")."
         ) tuples
       )
@@ -401,7 +402,7 @@ let default_subprovers =
     print_string "\n-------------------------------------------------\n";
     *)
 
-    
+
   in
 
   let dummy_proof a st = (0,[""]) in
@@ -567,7 +568,7 @@ let get_solutions (sc:state) : state * result list =
 ;;
 
 (** Kill all subprovers that haven't terminating by them self *)
-let kill_all (st:state) : state = 
+let kill_all (st:state) : state =
   ignore (List.map (fun run ->
     ignore(try kill run with _ -> run )
   ) st.running);
@@ -575,7 +576,7 @@ let kill_all (st:state) : state =
 
 (** api functions *)
 
-(** This function can be used to collect results of subprovers 
+(** This function can be used to collect results of subprovers
 
     @return information wether proof was succefull and used clauses
 
@@ -594,17 +595,17 @@ let collect_solution (st:State.state) : (bool * string list * string) =
     (* get sucessfull results *)
     let (sc, results) = get_solutions sc  in
     st.State.subprover_state <- Some sc;
-    
+
     (* proof found *)
-    if results != [] then 
+    if results != [] then
       (* give porve *)
-      if st.State.flags.State.proof_output >= 1 then 
-        generate_proof (List.hd results) 
+      if st.State.flags.State.proof_output >= 1 then
+        generate_proof (List.hd results)
       (* proof without evidence *)
-      else (true, [], "") 
+      else (true, [], "")
     (* no proof found *)
-    else (false, [], "") 
-          
+    else (false, [], "")
+
   (* no subprover has been started yet *)
   | None ->
     (false, [], "")
