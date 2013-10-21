@@ -328,6 +328,7 @@ let state_reset (ls : state) =
   ls.fo_clauses_new <- [];
   ls.foatp_calls <- 0; (*FIXME should be reset?*)
   ls.choice_functions <- [];
+  ls.subprover_state <- None;
   ()
 
 let state_reset_only_essentials (ls : state) =
@@ -352,6 +353,7 @@ let state_reset_only_essentials (ls : state) =
   ls.fo_clauses_new <- [];
   ls.foatp_calls <- 0; (*FIXME should be reset?*)
   ls.choice_functions <- [];
+  ls.subprover_state <- None;
   ()
 
 let set_origproblem (ls : state)
