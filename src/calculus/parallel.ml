@@ -417,7 +417,10 @@ let default_subprovers =
        sp_type = Folprover;
        path = get_subprover_path("vampire");
        name = "Vampire";
-       options = [];
+       options = [
+         "--mode"; "casc"; "--proof tptp";
+         "--output_axiom_names"; "on"
+       ];
        debug = false;
        }), dummy_proof));
     ("spass", (
