@@ -36,7 +36,7 @@ val supported_atps : string list
 
 val get_atp_times : unit -> (float * string) list
 
-val call_fo_atp : state -> string list -> unit
+val call_fo_atp : state -> unit
 
 val call_fo_atp_early : state -> string -> unit
 

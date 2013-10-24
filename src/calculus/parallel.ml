@@ -584,13 +584,13 @@ let kill_all (st:state) : state =
     @return information wether proof was succefull and used clauses
 
 *)
-let collect_solution (st:State.state) : (bool * string list * string) =
+let collect_solution (st:State.state) :  (string list * result) option =
 
   let generate_proof result =
     let handler = (snd (List.assoc result.from.subprover.name default_subprovers)) in
     let (_, output) = read_until (fun _ -> None) () result.channel in
     let output = output @ result.fragments in
-    (true, snd (handler st output), "")
+    Some ((snd (handler st output)), result)
   in
 
   match st.State.subprover_state with
@@ -605,13 +605,13 @@ let collect_solution (st:State.state) : (bool * string list * string) =
       if st.State.flags.State.proof_output >= 1 then
         generate_proof (List.hd results)
       (* proof without evidence *)
-      else (true, [], "")
+      else Some ([], List.hd results) 
     (* no proof found *)
-    else (false, [], "")
+    else None
 
   (* no subprover has been started yet *)
   | None ->
-    (false, [], "")
+    None
 ;;
 
 

@@ -445,7 +445,7 @@ let supported_atps = List.map fst Parallel.default_subprovers ;;
  *)
 
 
- let call_fo_atp_help (st:state) (prover:string) 
+ let call_fo_atp_help (st:state)
      (candidate_clauses:cl_clause list) : unit =
 
    (*  *)
@@ -463,7 +463,7 @@ let supported_atps = List.map fst Parallel.default_subprovers ;;
      if not !Translation.next_atp_call_is_redundant then
        Parallel.submit_problem st;
 
-     let (result, used_clauses, protocol) =
+     let ret =
        Parallel.tick st;
        Parallel.collect_solution st
 
@@ -471,22 +471,24 @@ let supported_atps = List.map fst Parallel.default_subprovers ;;
                           "atp" st.loop_count apply_prover st *)
      in
        (* Util.try_delete_file file_in; *)
-     match (result, used_clauses) with
-       (true, []) ->
+     match ret with
+       Some ([], result) ->
+         let prover =  result.Subprover.from.Subprover.subprover.Subprover.name in
            (*The external prover didn't require to use any specific clauses to
              prove the result*)
          ignore(mk_clause [] (inc_clause_count st) []
                   ("fo_atp_" ^ prover, candidate_clauses_numbers_and_strings, "")
                   DERIVED st)
-     | (true, cl_list) ->
+     | Some (cl_list, result) ->
          (*Link the specific clauses used by the external prover with the
            conclusion it derived*)
+       let prover =  result.Subprover.from.Subprover.subprover.Subprover.name in
        let clauses_number_and_strings =
          List.map (fun intstr -> (int_of_string intstr, "")) cl_list
        in
        ignore(mk_clause [] (inc_clause_count st) []
                 ("fo_atp_" ^ prover, clauses_number_and_strings, "") DERIVED st)
-     | (false, _) -> ()
+     | None -> ()
    end
 
 let call_fo_atp_early (st:state) (prover:string) =
@@ -498,31 +500,31 @@ let call_fo_atp_early (st:state) (prover:string) =
        (* let _ = index_clauselist_with_role expanded_candidate_clauses st in *)
 	let remember = st.flags.fo_translation in
 	let _ = set_flag_fo_translation st "simple" in
-	let res = call_fo_atp_help st prover candidate_clauses in
+	let res = call_fo_atp_help st candidate_clauses in
 	let _ = set_flag_fo_translation st remember in
 	  res
     | _ -> ()
 
-let call_fo_atp (st:state) (provers:string list) =
-  let prover = List.hd(provers) in
+let call_fo_atp (st:state) =
   let candidate_clauses =
     Set_of_clauses.elements (Set_of_clauses.union st.active st.passive) in
-  let time_left =
+  let start_time = Unix.gettimeofday () in
+(*  let time_left =
     (*if we've forced an ATP timeout then regard it*)
     match State.global_conf.atp_timeout_forced with
         None -> int_of_float (State.time_remaining_of_schedule ())
       | Some x -> x in
-  let start_time = Unix.gettimeofday () in
+
     if time_left > 0 then (*otherwise ATP will be given negative time!*)
       (*shrink ATP timeout in case it would exceed this schedule's duration*)
       if State.state_initialize.flags.atp_timeout > time_left then
         ignore(State.set_flag_atp_timeout State.state_initialize time_left);
+*)
+  call_fo_atp_help st  candidate_clauses;
+  State.child_time := !State.child_time +. (Unix.gettimeofday () -. start_time)
 
-      call_fo_atp_help st prover candidate_clauses;
-      State.child_time := !State.child_time +. (Unix.gettimeofday () -. start_time)
-
-let call_fo_atp_according_to_frequency_flag (st:state) (prover:string) =
-  if
+let call_fo_atp_according_to_frequency_flag (st:state) =
+(*  if
     let test =
       st.loop_count > 0 &
       (not (st.flags.atp_provers = [])) &
@@ -533,6 +535,8 @@ let call_fo_atp_according_to_frequency_flag (st:state) (prover:string) =
       test
   then call_fo_atp st [prover]
   else ()
+*)
+  call_fo_atp st
 
 
 
@@ -660,7 +664,7 @@ let pre_process_2 (st:state) =
       ]
       (factorized_clauses@clauses) st in
     Util.sysout 2 ("\n PROCESSED_A: " ^ cl_clauselist_to_protocol processed_a);
-    if (not (st.flags.atp_provers == [])) then call_fo_atp st st.flags.atp_provers else ();
+    if (not (st.flags.atp_provers == [])) then call_fo_atp st else ();
   let processed_b =
     compose
       [
@@ -728,9 +732,9 @@ let pre_process_2_alt (st:state) =
 
 let pre_process (st:state) =
   let _ = pre_process_1 st in
-    if (not (st.flags.atp_provers == [])) then call_fo_atp st st.flags.atp_provers else ();
+    if (not (st.flags.atp_provers == [])) then call_fo_atp st  else ();
     let _ = pre_process_2 st in
-      if (not (st.flags.atp_provers == [])) then call_fo_atp st st.flags.atp_provers else ();
+      if (not (st.flags.atp_provers == [])) then call_fo_atp st else ();
       let result = (Set_of_clauses.elements st.active) in
   (* List.iter (fun cl -> set_clause_weight cl 1) result; *)
   result
@@ -750,7 +754,7 @@ let loop (st:state) =
             set_current_success_status (Some st) GaveUp;
             raise MAX_LOOPS
           end;
-        if not (st.flags.atp_provers == []) then call_fo_atp_according_to_frequency_flag st (List.hd st.flags.atp_provers);
+        if not (st.flags.atp_provers == []) then call_fo_atp_according_to_frequency_flag st;
         let lightest' =
           let lightest = choose_and_remove_lightest_from_active st in
             IFDEF DEBUG THEN

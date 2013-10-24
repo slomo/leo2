@@ -13,7 +13,7 @@ val default_subprovers :
          (state -> string list -> int * string list))) list
 
 
-val collect_solution : state -> bool * string list * string
+val collect_solution : state -> (string list * result) option
 val submit_problem : state -> unit
 val tick : state -> unit
 val final_tick : state -> unit

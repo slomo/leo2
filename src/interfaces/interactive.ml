@@ -1468,11 +1468,11 @@ let prove_help (st:state) (provers:string list)  (flag:bool) =
         Util.sysout 1 ("[Unidepth=" ^ string_of_int unid ^ "]");
         ignore(pre_process st);
         State.check_timeout ();
-        if flag then call_fo_atp st st.flags.atp_provers;
+        if flag then call_fo_atp st;
         State.check_timeout ();
         loop st;
         State.check_timeout ();
-        if flag then call_fo_atp st st.flags.atp_provers;
+        if flag then call_fo_atp st;
         State.check_timeout ();
       with
           EMPTYCLAUSE_DERIVED ->
@@ -2267,7 +2267,7 @@ let cmd_delete_clause (st:state) args =
  let cmd_call_fo_atp (st:state) args =
    try
      let (prover,_) = get_str_arg args in
-     call_fo_atp st [prover];
+     call_fo_atp st;
      true
    with
      EMPTYCLAUSE_DERIVED -> true
